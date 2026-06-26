@@ -38,7 +38,6 @@ def run(
     width_mm: float,
     ref_height_mm: float,
     delta_mm: float,
-    admin: bool = False,
 ) -> bool:
     """
     Present reference and comparison bars in random order.
@@ -55,9 +54,9 @@ def run(
     else:
         heights = [ref_height_mm, comparison_height]
 
-    show(screen, haptics, width_mm, heights[0], label="1", timeout_ms=10_000, admin=admin)
+    show(screen, haptics, width_mm, heights[0], label="1", timeout_ms=10_000)
     _blank(screen, ISI_MS)
-    show(screen, haptics, width_mm, heights[1], label="2", timeout_ms=10_000, admin=admin)
+    show(screen, haptics, width_mm, heights[1], label="2", timeout_ms=10_000)
 
     _blank(screen, 200)
 

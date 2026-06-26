@@ -35,7 +35,6 @@ def show(
     height_mm: float,
     label: str = "",
     timeout_ms: int = 10_000,
-    admin: bool = False,
 ) -> None:
     """Display one bar; deliver haptic feedback while finger is inside. Blocking."""
     clock = pygame.time.Clock()
@@ -45,14 +44,6 @@ def show(
     bar_x = (WIDTH  - bar_w) // 2
     bar_y = (HEIGHT - bar_h) // 2
     bar_rect = pygame.Rect(bar_x, bar_y, bar_w, bar_h)
-
-    if admin:
-        font_admin = pygame.font.SysFont("Arial", 20)
-        admin_lines = [
-            f"width:  {width_mm} mm  →  {bar_w} px",
-            f"height: {height_mm} mm  →  {bar_h} px",
-            f"x: {bar_x}–{bar_x + bar_w}   y: {bar_y}–{bar_y + bar_h}",
-        ]
 
     font = pygame.font.SysFont("Arial", 28)
     hint = font.render(label, True, FONT_COLOR)
@@ -104,13 +95,5 @@ def show(
         screen.blit(hint, hint.get_rect(center=(WIDTH // 2, bar_y - 40)))
         if finger_pos:
             pygame.draw.circle(screen, (255, 255, 255), finger_pos, 14)
-
-        if admin:
-            for i, line in enumerate(admin_lines):
-                surf = font_admin.render(line, True, (255, 220, 80))
-                screen.blit(surf, (12, 12 + i * 24))
-            # bar boundary lines
-            pygame.draw.rect(screen, (255, 220, 80), bar_rect, 2)
-
         pygame.display.flip()
         clock.tick(60)
