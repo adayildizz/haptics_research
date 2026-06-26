@@ -2,6 +2,7 @@
 CARRIER_FREQUENCY = 125       # Hz
 PEAK_VOLTAGE = 4.0            # V peak, before external amplification
 MIN_VOLTAGE = 0.0             # V when the electroadhesion signal is off
+DISABLE_OUTPUT_WHEN_OFF = True
 VISA_ADDRESS = "TCPIP0::169.254.2.20::inst0::INSTR"
 
 # Display/input calibration

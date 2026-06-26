@@ -7,6 +7,7 @@ from typing import Any
 
 from .config import (
     CARRIER_FREQUENCY,
+    DISABLE_OUTPUT_WHEN_OFF,
     MAX_SIGNAL_DURATION_S,
     MIN_SPEED_MM_S,
     MIN_VOLTAGE,
@@ -81,8 +82,11 @@ def signal_off(instrument: Any | None) -> None:
     """Deactivate the signal for bar exterior regions."""
     if instrument is None:
         return
-    _write_output(instrument, True)
-    _write_voltage(instrument, MIN_VOLTAGE)
+    if DISABLE_OUTPUT_WHEN_OFF:
+        _write_output(instrument, False)
+    else:
+        _write_output(instrument, True)
+        _write_voltage(instrument, MIN_VOLTAGE)
 
 
 def close_hardware(instrument: Any | None) -> None:
