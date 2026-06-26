@@ -14,6 +14,31 @@ from .config import (
     VISA_ADDRESS,
 )
 
+_current_frequency: float | None = None
+_current_voltage: float | None = None
+_output_enabled = False
+
+
+def _write_frequency(instrument: Any, frequency: float, *, force: bool = False) -> None:
+    global _current_frequency
+    if force or _current_frequency is None or int(frequency) != int(_current_frequency):
+        instrument.write(f"FREQ {int(frequency)}")
+        _current_frequency = frequency
+
+
+def _write_voltage(instrument: Any, voltage: float, *, force: bool = False) -> None:
+    global _current_voltage
+    if force or _current_voltage is None or abs(voltage - _current_voltage) > 0.05:
+        instrument.write(f"VOLT {voltage:.2f}")
+        _current_voltage = voltage
+
+
+def _write_output(instrument: Any, enabled: bool, *, force: bool = False) -> None:
+    global _output_enabled
+    if force or enabled != _output_enabled:
+        instrument.write(f"OUTP {'ON' if enabled else 'OFF'}")
+        _output_enabled = enabled
+
 
 def connect_hardware(address: str = VISA_ADDRESS) -> Any | None:
     """Open and configure the VISA signal generator.
@@ -33,9 +58,9 @@ def connect_hardware(address: str = VISA_ADDRESS) -> Any | None:
         instrument.write("OUTP:LOAD INF")
         instrument.write("FUNC SQU")
         instrument.write("FUNC:SQU:DCYC 50")
-        instrument.write(f"FREQ {CARRIER_FREQUENCY}")
-        instrument.write(f"VOLT {MIN_VOLTAGE}")
-        instrument.write("OUTP ON")
+        _write_frequency(instrument, CARRIER_FREQUENCY, force=True)
+        _write_voltage(instrument, MIN_VOLTAGE, force=True)
+        _write_output(instrument, True, force=True)
         print(f"Connected to signal generator: {instrument.query('*IDN?').strip()}")
         return instrument
     except Exception as exc:
@@ -47,16 +72,17 @@ def signal_on(instrument: Any | None) -> None:
     """Activate the bar interior signal."""
     if instrument is None:
         return
-    instrument.write(f"FREQ {CARRIER_FREQUENCY}")
-    instrument.write(f"VOLT {PEAK_VOLTAGE}")
-    instrument.write("OUTP ON")
+    _write_frequency(instrument, CARRIER_FREQUENCY)
+    _write_output(instrument, True)
+    _write_voltage(instrument, PEAK_VOLTAGE)
 
 
 def signal_off(instrument: Any | None) -> None:
     """Deactivate the signal for bar exterior regions."""
     if instrument is None:
         return
-    instrument.write(f"VOLT {MIN_VOLTAGE}")
+    _write_output(instrument, True)
+    _write_voltage(instrument, MIN_VOLTAGE)
 
 
 def close_hardware(instrument: Any | None) -> None:
@@ -64,8 +90,8 @@ def close_hardware(instrument: Any | None) -> None:
     if instrument is None:
         return
     try:
-        signal_off(instrument)
-        instrument.write("OUTP OFF")
+        _write_voltage(instrument, MIN_VOLTAGE, force=True)
+        _write_output(instrument, False, force=True)
         instrument.close()
     except Exception:
         pass
