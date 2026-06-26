@@ -11,13 +11,31 @@ from .config import (
     MAX_SIGNAL_DURATION_S,
     MIN_SPEED_MM_S,
     MIN_VOLTAGE,
+    OFFSET_V,
     PEAK_VOLTAGE,
     VISA_ADDRESS,
+    WAVE_SQUARE,
 )
 
+_current_waveform: str | None = None
 _current_frequency: float | None = None
 _current_voltage: float | None = None
 _output_enabled = False
+
+
+def _reset_cached_state() -> None:
+    global _current_waveform, _current_frequency, _current_voltage, _output_enabled
+    _current_waveform = None
+    _current_frequency = None
+    _current_voltage = None
+    _output_enabled = False
+
+
+def _write_waveform(instrument: Any, waveform: str, *, force: bool = False) -> None:
+    global _current_waveform
+    if force or waveform != _current_waveform:
+        instrument.write(f"FUNC {waveform}")
+        _current_waveform = waveform
 
 
 def _write_frequency(instrument: Any, frequency: float, *, force: bool = False) -> None:
@@ -29,9 +47,10 @@ def _write_frequency(instrument: Any, frequency: float, *, force: bool = False) 
 
 def _write_voltage(instrument: Any, voltage: float, *, force: bool = False) -> None:
     global _current_voltage
-    if force or _current_voltage is None or abs(voltage - _current_voltage) > 0.05:
-        instrument.write(f"VOLT {voltage:.2f}")
-        _current_voltage = voltage
+    clamped_voltage = max(MIN_VOLTAGE, min(voltage, PEAK_VOLTAGE))
+    if force or _current_voltage is None or abs(clamped_voltage - _current_voltage) > 0.05:
+        instrument.write(f"VOLT {clamped_voltage:.2f}")
+        _current_voltage = clamped_voltage
 
 
 def _write_output(instrument: Any, enabled: bool, *, force: bool = False) -> None:
@@ -50,6 +69,7 @@ def connect_hardware(address: str = VISA_ADDRESS) -> Any | None:
     try:
         import pyvisa
 
+        _reset_cached_state()
         rm = pyvisa.ResourceManager()
         instrument = rm.open_resource(address)
         instrument.write_termination = "\n"
@@ -57,11 +77,12 @@ def connect_hardware(address: str = VISA_ADDRESS) -> Any | None:
         instrument.write("*RST")
         instrument.write("VOLT:UNIT VPP")
         instrument.write("OUTP:LOAD INF")
-        instrument.write("FUNC SQU")
+        instrument.write(f"VOLT:OFFS {OFFSET_V}")
+        _write_waveform(instrument, WAVE_SQUARE, force=True)
         instrument.write("FUNC:SQU:DCYC 50")
         _write_frequency(instrument, CARRIER_FREQUENCY, force=True)
         _write_voltage(instrument, MIN_VOLTAGE, force=True)
-        _write_output(instrument, True, force=True)
+        _write_output(instrument, not DISABLE_OUTPUT_WHEN_OFF, force=True)
         print(f"Connected to signal generator: {instrument.query('*IDN?').strip()}")
         return instrument
     except Exception as exc:
@@ -73,9 +94,10 @@ def signal_on(instrument: Any | None) -> None:
     """Activate the bar interior signal."""
     if instrument is None:
         return
+    _write_waveform(instrument, WAVE_SQUARE)
     _write_frequency(instrument, CARRIER_FREQUENCY)
-    _write_output(instrument, True)
     _write_voltage(instrument, PEAK_VOLTAGE)
+    _write_output(instrument, True)
 
 
 def signal_off(instrument: Any | None) -> None:
