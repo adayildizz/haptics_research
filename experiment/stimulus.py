@@ -1,13 +1,14 @@
 """
-Renders a single tactile bar and delivers haptic feedback during touch.
-
-Call `show(screen, haptics, width_mm, height_mm)` to present one stimulus.
-Returns when the participant lifts their finger or a timeout is reached.
+Renders two bars simultaneously — one in each screen half.
+Haptic feedback is active when the finger is inside a bar region.
+In normal mode bars are invisible; in admin mode they are visible.
+The center dividing line is always drawn.
 """
 
 import pygame
 import sys
-sys.path.insert(0, "..")
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from config import (
     WIDTH, HEIGHT, INVERT_X, INVERT_Y,
     CARRIER_FREQUENCY, VOLTAGE, WAVE_SQUARE, MIN_VOLTAGE,
@@ -16,63 +17,64 @@ from config import (
 # Pixels-per-mm — calibrate to the physical display (96 dpi default)
 PX_PER_MM = 3.78
 
-BAR_COLOR        = (54, 162, 235)
-BAR_COLOR_ACTIVE = (120, 200, 255)
-BG_COLOR         = (0, 0, 0)
-FONT_COLOR       = (200, 200, 200)
-
-LIFTOFF_GRACE_MS = 300  # ms to wait after finger lift before returning
+BG_COLOR       = (0, 0, 0)
+BAR_COLOR      = (54, 162, 235)
+BAR_COLOR_HOT  = (120, 200, 255)
+DIVIDER_COLOR  = (180, 180, 180)
+ADMIN_COLOR    = (255, 220, 80)
+FONT_COLOR     = (200, 200, 200)
 
 
 def mm_to_px(mm: float) -> int:
     return int(mm * PX_PER_MM)
 
 
-def show(
+def show_pair(
     screen: pygame.Surface,
     haptics,
     width_mm: float,
-    height_mm: float,
-    label: str = "",
-    timeout_ms: int = 10_000,
+    left_height_mm: float,
+    right_height_mm: float,
     admin: bool = False,
-) -> None:
-    """Display one bar; deliver haptic feedback while finger is inside. Blocking."""
+) -> int:
+    """
+    Show two bars side by side and wait for a ← / → response.
+
+    Left half  → bar with left_height_mm
+    Right half → bar with right_height_mm
+
+    Returns 1 if user pressed ← (left), 2 if → (right).
+    """
     clock = pygame.time.Clock()
+    font_admin = pygame.font.SysFont("Arial", 20)
 
-    bar_w = mm_to_px(width_mm)
-    bar_h = mm_to_px(height_mm)
-    bar_x = (WIDTH  - bar_w) // 2
-    bar_y = (HEIGHT - bar_h) // 2
-    bar_rect = pygame.Rect(bar_x, bar_y, bar_w, bar_h)
+    half = WIDTH // 2
 
-    if admin:
-        font_admin = pygame.font.SysFont("Arial", 20)
-        admin_lines = [
-            f"width:  {width_mm} mm  →  {bar_w} px",
-            f"height: {height_mm} mm  →  {bar_h} px",
-            f"x: {bar_x}–{bar_x + bar_w}   y: {bar_y}–{bar_y + bar_h}",
-        ]
+    def make_bar(height_mm: float, x_offset: int) -> pygame.Rect:
+        bw = mm_to_px(width_mm)
+        bh = mm_to_px(height_mm)
+        bx = x_offset + (half - bw) // 2
+        by = (HEIGHT - bh) // 2
+        return pygame.Rect(bx, by, bw, bh)
 
-    font = pygame.font.SysFont("Arial", 28)
-    hint = font.render(label, True, FONT_COLOR)
-
-    start_ms   = pygame.time.get_ticks()
-    liftoff_ms = None
+    left_rect  = make_bar(left_height_mm,  0)
+    right_rect = make_bar(right_height_mm, half)
 
     while True:
-        now = pygame.time.get_ticks()
-
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 haptics.close()
                 pygame.quit()
                 raise SystemExit
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_LEFT:
+                    haptics.update_signal(WAVE_SQUARE, CARRIER_FREQUENCY, MIN_VOLTAGE)
+                    return 1
+                if event.key == pygame.K_RIGHT:
+                    haptics.update_signal(WAVE_SQUARE, CARRIER_FREQUENCY, MIN_VOLTAGE)
+                    return 2
 
-        if now - start_ms > timeout_ms:
-            haptics.update_signal(WAVE_SQUARE, CARRIER_FREQUENCY, MIN_VOLTAGE)
-            return
-
+        # Finger position
         finger_pos = None
         mx, my = pygame.mouse.get_pos()
         if pygame.mouse.get_pressed()[0]:
@@ -84,33 +86,47 @@ def show(
                 raw_y = 1.0 - raw_y
             finger_pos = (int(raw_x * WIDTH), int(raw_y * HEIGHT))
 
-        inside = finger_pos is not None and bar_rect.collidepoint(finger_pos)
+        # Haptic
+        in_left  = finger_pos is not None and left_rect.collidepoint(finger_pos)
+        in_right = finger_pos is not None and right_rect.collidepoint(finger_pos)
         haptics.update_signal(
             WAVE_SQUARE,
             CARRIER_FREQUENCY,
-            VOLTAGE if inside else MIN_VOLTAGE,
+            VOLTAGE if (in_left or in_right) else MIN_VOLTAGE,
         )
 
-        if finger_pos is None and liftoff_ms is None:
-            liftoff_ms = now
-        elif finger_pos is not None:
-            liftoff_ms = None
-
-        if liftoff_ms is not None and (now - liftoff_ms) > LIFTOFF_GRACE_MS:
-            return
-
+        # Draw
         screen.fill(BG_COLOR)
-        pygame.draw.rect(screen, BAR_COLOR_ACTIVE if inside else BAR_COLOR, bar_rect)
-        screen.blit(hint, hint.get_rect(center=(WIDTH // 2, bar_y - 40)))
-        if finger_pos:
-            pygame.draw.circle(screen, (255, 255, 255), finger_pos, 14)
+
+        # Dividing line — always visible
+        pygame.draw.line(screen, DIVIDER_COLOR, (half, 0), (half, HEIGHT), 2)
 
         if admin:
-            for i, line in enumerate(admin_lines):
-                surf = font_admin.render(line, True, (255, 220, 80))
-                screen.blit(surf, (12, 12 + i * 24))
-            # bar boundary lines
-            pygame.draw.rect(screen, (255, 220, 80), bar_rect, 2)
+            # Bars visible with outline
+            left_color  = BAR_COLOR_HOT if in_left  else BAR_COLOR
+            right_color = BAR_COLOR_HOT if in_right else BAR_COLOR
+            pygame.draw.rect(screen, left_color,  left_rect)
+            pygame.draw.rect(screen, right_color, right_rect)
+            pygame.draw.rect(screen, ADMIN_COLOR, left_rect,  2)
+            pygame.draw.rect(screen, ADMIN_COLOR, right_rect, 2)
+
+            # Dimension labels
+            def admin_label(rect: pygame.Rect, height_mm: float) -> None:
+                lines = [
+                    f"w: {width_mm} mm = {rect.width} px",
+                    f"h: {height_mm} mm = {rect.height} px",
+                    f"x: {rect.x}–{rect.x + rect.width}",
+                    f"y: {rect.y}–{rect.y + rect.height}",
+                ]
+                for i, line in enumerate(lines):
+                    surf = font_admin.render(line, True, ADMIN_COLOR)
+                    screen.blit(surf, (rect.x, rect.y - 20 - (len(lines) - i) * 22))
+
+            admin_label(left_rect,  left_height_mm)
+            admin_label(right_rect, right_height_mm)
+
+        if finger_pos:
+            pygame.draw.circle(screen, (255, 255, 255), finger_pos, 14)
 
         pygame.display.flip()
         clock.tick(60)
