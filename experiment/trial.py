@@ -1,13 +1,35 @@
 """
-Single 2-AFC trial — simultaneous presentation.
+Single 2-AFC trial.
 
-Both bars are shown at the same time (left / right halves).
-User presses ← or → to indicate which side felt taller.
+Presents two bars sequentially and waits for a left/right keypress indicating
+which bar felt taller. Returns True if the participant chose the taller bar.
 """
 
-import random
 import pygame
-from experiment.stimulus import show_pair
+import random
+from experiment.stimulus import show
+
+ISI_MS = 800  # inter-stimulus interval (blank screen)
+
+
+def _blank(screen: pygame.Surface, duration_ms: int) -> None:
+    screen.fill((0, 0, 0))
+    pygame.display.flip()
+    pygame.time.wait(duration_ms)
+
+
+def _wait_response() -> int:
+    """Block until ← (1) or → (2). Returns 1 or 2."""
+    while True:
+        for event in pygame.event.get():
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_LEFT:
+                    return 1
+                if event.key == pygame.K_RIGHT:
+                    return 2
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                raise SystemExit
 
 
 def run(
@@ -19,25 +41,32 @@ def run(
     admin: bool = False,
 ) -> bool:
     """
+    Present reference and comparison bars in random order.
+
     Returns True if the participant correctly identified the taller bar.
     """
     comparison_height = ref_height_mm + delta_mm
 
-    # Randomly assign which side is taller
-    taller_side = random.choice([1, 2])   # 1 = left, 2 = right
+    # Randomly assign which interval contains the taller bar
+    taller_interval = random.choice([1, 2])
 
-    if taller_side == 1:
-        left_h, right_h = comparison_height, ref_height_mm
+    if taller_interval == 1:
+        heights = [comparison_height, ref_height_mm]
     else:
-        left_h, right_h = ref_height_mm, comparison_height
+        heights = [ref_height_mm, comparison_height]
 
-    response = show_pair(
-        screen          = screen,
-        haptics         = haptics,
-        width_mm        = width_mm,
-        left_height_mm  = left_h,
-        right_height_mm = right_h,
-        admin           = admin,
-    )
+    show(screen, haptics, width_mm, heights[0], label="1", timeout_ms=10_000, admin=admin)
+    _blank(screen, ISI_MS)
+    show(screen, haptics, width_mm, heights[1], label="2", timeout_ms=10_000, admin=admin)
 
-    return response == taller_side
+    _blank(screen, 200)
+
+    # Prompt
+    font = pygame.font.SysFont("Arial", 32)
+    screen.fill((0, 0, 0))
+    prompt = font.render("Which was taller?   ←  First     Second  →", True, (200, 200, 200))
+    screen.blit(prompt, prompt.get_rect(center=(screen.get_width() // 2, screen.get_height() // 2)))
+    pygame.display.flip()
+
+    response = _wait_response()
+    return response == taller_interval
