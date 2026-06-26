@@ -38,6 +38,7 @@ def _parse_args():
     parser = argparse.ArgumentParser(description="JND Experiment")
     parser.add_argument("--participant", required=True, help="Participant ID (e.g. P01)")
     parser.add_argument("--session",     required=True, type=int, help="Session number")
+    parser.add_argument("--admin",       action="store_true", help="Show bar coordinates on screen")
     return parser.parse_args()
 
 
@@ -115,11 +116,12 @@ def run_experiment():
         n_trials = 0
         while not staircase.is_done():
             correct = run_trial(
-                screen      = screen,
-                haptics     = haptics,
-                width_mm    = width_mm,
+                screen        = screen,
+                haptics       = haptics,
+                width_mm      = width_mm,
                 ref_height_mm = ref_mm,
-                delta_mm    = staircase.current,
+                delta_mm      = staircase.current,
+                admin         = args.admin,
             )
             staircase.update(correct)
             n_trials += 1
