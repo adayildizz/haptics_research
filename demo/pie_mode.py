@@ -1,6 +1,6 @@
 import pygame
 import math
-from core.settings import *
+from config import *
 
 # ---------------------------------------------------------------------------
 # Helper

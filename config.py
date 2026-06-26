@@ -1,22 +1,14 @@
-"""
-Configuration module for the Haptic System.
-
-This file acts as the central hub for all global settings and constants used 
-throughout the application. It includes hardware connection details, safety 
-limits for voltage, physical display dimensions, and UI color palettes for 
-the different haptic modes.
-"""
-
 # --- SETTINGS AND CONSTANTS ---
 
 # ==========================================
-# Hardware Settings
+# HARDWARE SETTINGS
 # ==========================================
 # The network address of the signal generator (VISA resource string)
 VISA_ADDRESS = 'TCPIP0::169.254.2.20::inst0::INSTR'
 
 # Default carrier frequency in Hertz (Hz)
 CARRIER_FREQ = 125
+
 
 # HARDWARE SAFETY LIMITS: 
 # It is critical that MAX_VOLTAGE does not exceed safe limits for the haptic hardware.
@@ -36,12 +28,10 @@ WAVE_NOISE = 'NOIS'    # Noise wave (typically used for rough textures like sand
 # ==========================================
 # Initial window position. Using a negative X value (e.g., -1920) is often used 
 # to spawn the window on a secondary monitor located to the left of the main display.
-X_KOORDINATI = 0
-Y_KOORDINATI = 0
+X_COORDINATE = 0
+Y_COORDINATE = 0
 
 # Screen resolution dimensions
-# WIDTH = 1920
-# HEIGHT = 1080
 import pygame
 pygame.init()
 
@@ -54,7 +44,26 @@ INVERT_X = True
 INVERT_Y = True
 
 # ==========================================
-# Colors (RGB and RGBA Formats)
+# EXPERIMENT SETTINGS
+# ==========================================
+
+INITIAL_WIDTHS = [5,10,15,20] # 4 levels in millimeters 
+INITIAL_HEIGHTS = [2, 4, 6, 8, 10, 12, 14, 16 ] # 8 levels in millimeters
+
+DH_INITIAL = 2.0
+DH_MIN = 0.5
+DH_STEP = 0.1
+
+# Stimulus 
+VOLTAGE = 4.0 #volt
+CARRIER_FREQUENCY = 125 #Hz
+
+# Staircase stopping criterion (Sun et al., 2023)
+N_REVERSALS = 12
+N_REVERSALS_AVERAGED = 8
+
+# ==========================================
+# MODES
 # ==========================================
 
 # Basic Colors
@@ -84,8 +93,7 @@ COLOR_SKY = (20, 20, 40)           # Dark blue for the night sky
 COLOR_GROUND = (30, 30, 30)        # Dark grey/brown for the ground
 
 
-# Presets for pie graph 
-
+# Presets for pie graph
 PRESETS = [
     {
         "title": "Türkiye Enerji Kaynakları",

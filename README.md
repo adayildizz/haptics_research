@@ -1,74 +1,62 @@
-# 🖐️ Haptic Feedback Simulator
+# haptic-lab
 
-A Python-based interactive application that synchronizes visual graphics with real-time electrovibration haptic hardware. Built with **Pygame** and **PyVISA**, this system allows users to "feel" digital textures and rhythms through a connected signal generator and voltage amplifier.
-
----
-
-## ✨ Features & Interaction Modes
-
-The application features three distinct haptic experiences. Press `Enter` to cycle through them:
-
-* ❤️ **Heart Mode**: Simulates a human heartbeat. Touch the on-screen heart to feel a synchronized, pulsing "lub-dub" rhythm driven by voltage spikes.
-* 🏖️ **Texture Mode**: A split-screen simulation for surface textures. 
-    * **Sand (Left):** Dragging the box generates randomized, low-frequency signals simulating a gritty, rough texture.
-    * **Metal Grating (Right):** Dragging the box generates a constant, very low-frequency, high-voltage signal simulating heavy "thuds" across a metal grid.
-* 🚂 **Train Mode**: Simulates the gathering momentum of a train. As the 3D visual track speeds up, the haptic frequency exponentially increases from a slow crawl to a high-speed vibration.
+Research repository for electroadhesion-based haptic display systems. Built at the Haptics Lab, Koç University.
 
 ---
 
-## 🛠️ Hardware Requirements
+## Repository Structure
 
-* A signal generator or haptic controller compatible with standard VISA communication.
-* An infrared frame or touch screen for user input.
-* **⚠️ IMPORTANT SAFETY NOTE regarding Voltage:** The `MAX_VOLTAGE` defined in `settings.py` (Default: 4.0V) represents the peak-to-peak voltage (Vpp) output of the signal generator. **This specific setup utilizes a 50x voltage amplifier.** Therefore, a 4Vpp signal from the generator results in a **100V peak** on the physical touchscreen side. Ensure your hardware and touch interface are rated to safely handle these amplified voltages.
+```
+haptic-lab/
+├── experiment/    # Psychophysics experiment: tactile bar graph JND
+├── demo/          # Interactive haptic demo modes
+├── core/          # Hardware controller (HapticController)
+├── config.py      # Hardware constants and display settings
+└── main.py        # Entry point — see usage below
+```
 
----
+### Usage
 
-## 💻 Software Requirements
-
-* **Python 3.x**
-* **Pygame** (for the visual interface and input handling)
-* **PyVISA** (for hardware communication)
-
----
-
-## 🚀 Installation & Setup
-
-**1. Clone the repository**
 ```bash
-git clone https://github.com/emirbahadirunsal/EA-Demo.git
-cd EA-Demo
+# Demo modes
+python demo/main.py --heart
+python demo/main.py --train
+python demo/main.py --texture
+python demo/main.py --bar
+python demo/main.py --pie
+python demo/main.py --image path/to/image.png
+
+# Psychophysics experiment
+python experiment/main.py --participant P01 --session 1
 ```
 
-**2. Install dependencies**
-```bash
-pip install -r requirements.txt
-```
+### `experiment/`
 
-**3. Configure your hardware**
-Open `core/settings.py` and update the `VISA_ADDRESS` to match your signal generator's IP address or connection string:
-```python
-VISA_ADDRESS = 'TCPIP0::169.254.2.20::inst0::INSTR'
-```
+A psychophysics experiment measuring height JND for tactile bar graphs rendered via electroadhesion, across varying bar widths. The goal is to characterize how bar geometry affects height discrimination without visual information — enabling data access for non-visual users.
 
-**4. Run the application**
-```bash
-python main.py
-```
+See [`experiment/README.md`](experiment/README.md) for full design documentation.
+
+### `demo/`
+
+An interactive application demonstrating electroadhesion haptic feedback through three modes: heartbeat simulation, surface texture rendering, and train momentum. Forked from [emirbahadirunsal/EA-Demo](https://github.com/emirbahadirunsal/EA-Demo).
+
+Start with `python main.py --demo heart` (see usage below).
 
 ---
 
-## 🎮 Controls
+## Hardware
 
-* **Touch**: Interact with the visual elements to trigger haptic feedback.
-* **Enter (Return)**: Switch to the next haptic mode.
-* **Escape (ESC)**: Safely close the hardware connection and exit the application.
+Both modules run on the same hardware stack:
+
+| Component | Specification |
+|-----------|---------------|
+| Tactile display | Electroadhesion, 4V peak, 125 Hz carrier frequency |
+| Position sensor | Nexio NIB170BP infrared frame, ~100 Hz |
+| Signal generator | VISA-compatible (e.g. Keysight 81150A) |
+| Amplifier | 50× voltage amplifier |
 
 ---
 
-## ⚙️ Configuration (`core/settings.py`)
+## Lab
 
-Core parameters can be easily adjusted in the `core/settings.py` file without modifying the main logic:
-* **Safety Limits**: Adjust the `MAX_VOLTAGE` output for the signal generator (remember to account for your amplifier's multiplier).
-* **Frequencies**: Change the default `CARRIER_FREQ`.
-* **Display**: Modify window resolution (`WIDTH`, `HEIGHT`) or invert touch axes (`INVERT_X`, `INVERT_Y`) if your hardware frame requires it.
+[Haptics Lab, Koç University](https://haptics.ku.edu.tr) — supervised by Prof. Çağatay Başdoğan.
