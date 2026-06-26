@@ -10,7 +10,7 @@ Preset datasets can be switched with the 1 / 2 / 3 keys.
 """
 
 import pygame
-from config import *
+from core.settings import *
 
 # ---------------------------------------------------------------------------
 # Preset Datasets

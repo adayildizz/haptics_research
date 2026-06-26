@@ -9,7 +9,7 @@ speed of the passing railway sleepers and the haptic frequency.
 
 import pygame
 import math
-from config import *
+from core.settings import *
 
 class TrainMode:
     """
