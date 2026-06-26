@@ -1,5 +1,5 @@
 class StairCase:
-    def __init__(self, start: float, step: float, min_val: float, n_reversals: int, n_averaged: int):
+    def __init__(self, start: float, step: float, min_val: float, n_reversals: int, n_averaged: int) -> None:
         self.current = start
         self.step = step
         self.n_reversals = n_reversals
@@ -13,8 +13,9 @@ class StairCase:
     def is_done(self) -> bool:
         return len(self.reversals) >= self.n_reversals
 
-    def update(self, correct: bool):
-        if self.is_done(): return
+    def update(self, correct: bool) -> None:
+        if self.is_done():
+            return
         if correct:
             if self.last_up:
                 self.last_up = False
