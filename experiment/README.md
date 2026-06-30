@@ -65,35 +65,35 @@ A high-resolution timer (`time.perf_counter()`) controls signal delivery indepen
 
 ## Display and Frame Calibration
 
-The IR frame presents as a virtual mouse, so the experiment receives screen-pixel coordinates, not native millimeter coordinates. The normal experiment window is locked to the physical frame area:
+The IR frame presents as a virtual mouse, so the experiment receives screen-pixel coordinates, not native millimeter coordinates. To keep the setup simple, the monitor size is fixed in config:
+
+```
+MONITOR_DIAGONAL_INCH = 21.5
+```
+
+The normal experiment window is locked to the physical frame/haptic area:
 
 ```
 FRAME_ACTIVE_WIDTH_MM = 200.0
 FRAME_ACTIVE_HEIGHT_MM = 100.0
 ```
 
-The saved display calibration tells the software how many screen pixels correspond to 1 physical millimeter on the monitor. The experiment uses that value to open a window whose physical size is approximately 200 mm x 100 mm. Inside that window:
+The software estimates how many screen pixels correspond to 1 physical millimeter from the fixed monitor diagonal and current screen resolution. It then opens a window whose physical size is approximately 200 mm x 100 mm. Inside that window:
 
 ```
 bar width px = bar width mm * px_per_mm_x
 bar height px = bar height mm * px_per_mm_y
 ```
 
-To calibrate from measured screen/display dimensions:
+Bar widths use the X scale, bar heights use the Y scale, and finger speed converts pixel motion back to millimeters using the same two scale factors. When the real haptic/frame dimensions are measured, update `FRAME_ACTIVE_WIDTH_MM` and `FRAME_ACTIVE_HEIGHT_MM` in `config.py`.
+
+If the haptic feedback surface is smaller than the frame/window, calibrate that surface directly:
 
 ```bash
-python3 -m experiment.main --calibrate --active-width-mm <WIDTH_MM> --active-height-mm <HEIGHT_MM>
+python3 -m experiment.main --mode demo --calibrate-haptic-surface --haptic-width-mm <WIDTH_MM> --haptic-height-mm <HEIGHT_MM>
 ```
 
-For a rough 14-inch estimate:
-
-```bash
-python3 -m experiment.main --calibrate --screen-diagonal-inch 14
-```
-
-This saves `experiment/data/display_calibration.json`. Bar widths use the X calibration, bar heights use the Y calibration, and finger speed converts pixel motion back to millimeters using the same two scale factors. When the real frame dimensions are measured, update `FRAME_ACTIVE_WIDTH_MM` and `FRAME_ACTIVE_HEIGHT_MM` in `config.py`.
-
-The experiment refuses to run without this file unless `--allow-fallback-calibration` is passed. The fallback is only for software demos, not data collection.
+The app asks for the haptic surface top-left and bottom-right corners. Touch/hold each corner and press SPACE. This saves `experiment/data/haptic_surface_calibration.json`. When this file exists, the experiment draws bars and computes finger speed using the calibrated haptic surface area instead of the whole window.
 
 ## Variables
 

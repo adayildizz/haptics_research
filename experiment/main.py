@@ -21,6 +21,7 @@ from .config import (
     FRAME_ACTIVE_WIDTH_MM,
     HEIGHT_LEVELS,
     LOCK_WINDOW_TO_FRAME_SIZE,
+    MONITOR_DIAGONAL_INCH,
     N_REVERSALS,
     N_REVERSALS_AVERAGED,
     WIDTH_LEVELS,
@@ -34,11 +35,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--participant", default=time.strftime("%Y%m%d_%H%M%S"))
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--windowed", action="store_true", help="Use the configured debug window size instead of the frame-sized experiment window.")
-    parser.add_argument("--calibrate", action="store_true", help="Save a physical display calibration and exit.")
+    parser.add_argument("--calibrate", action="store_true", help="Optional: save a physical display calibration and exit.")
     parser.add_argument("--allow-fallback-calibration", action="store_true", help="Use the rough fallback px/mm value if no calibration exists.")
     parser.add_argument("--active-width-mm", type=float, help="Measured active tactile/display width in millimeters.")
     parser.add_argument("--active-height-mm", type=float, help="Measured active tactile/display height in millimeters.")
     parser.add_argument("--screen-diagonal-inch", type=float, help="Approximate calibration from screen diagonal and current fullscreen aspect ratio.")
+    parser.add_argument("--calibrate-haptic-surface", action="store_true", help="Touch-calibrate the haptic surface area inside the experiment window.")
+    parser.add_argument("--haptic-width-mm", type=float, default=FRAME_ACTIVE_WIDTH_MM, help="Measured haptic surface width in millimeters.")
+    parser.add_argument("--haptic-height-mm", type=float, default=FRAME_ACTIVE_HEIGHT_MM, help="Measured haptic surface height in millimeters.")
     return parser.parse_args()
 
 
@@ -53,6 +57,33 @@ def wait_for_space_or_escape(screen: pygame.Surface, message: str) -> bool:
                     return False
                 if event.key == pygame.K_SPACE:
                     return True
+
+
+def wait_for_mouse_point(screen: pygame.Surface, message: str) -> tuple[int, int] | None:
+    font = pygame.font.SysFont("Arial", 26, bold=True)
+    subfont = pygame.font.SysFont("Arial", 20)
+    clock = pygame.time.Clock()
+    while True:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                return None
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    return None
+                if event.key == pygame.K_SPACE:
+                    return pygame.mouse.get_pos()
+
+        screen.fill(display.BACKGROUND)
+        pos = pygame.mouse.get_pos()
+        text = font.render(message, True, display.TEXT)
+        hint = subfont.render("Touch/hold the corner, then press SPACE. ESC exits.", True, display.MUTED)
+        coords = subfont.render(f"Current mouse/IR position: {pos[0]}, {pos[1]}", True, display.MUTED)
+        screen.blit(text, text.get_rect(center=(screen.get_width() // 2, screen.get_height() // 2 - 52)))
+        screen.blit(hint, hint.get_rect(center=(screen.get_width() // 2, screen.get_height() // 2)))
+        screen.blit(coords, coords.get_rect(center=(screen.get_width() // 2, screen.get_height() // 2 + 36)))
+        pygame.draw.circle(screen, display.TEXT, pos, 8, 2)
+        pygame.display.flip()
+        clock.tick(FPS)
 
 
 def run() -> int:
@@ -99,15 +130,10 @@ def run() -> int:
 
     desktop_info = pygame.display.Info()
     desktop_size = (desktop_info.current_w, desktop_info.current_h)
-    try:
-        display_calibration = calibration_module.load_calibration(
-            desktop_size,
-            allow_fallback=args.allow_fallback_calibration,
-        )
-    except FileNotFoundError as exc:
-        print(exc)
-        pygame.quit()
-        return 2
+    display_calibration = calibration_module.make_diagonal_calibration(
+        desktop_size,
+        diagonal_inch=MONITOR_DIAGONAL_INCH,
+    )
 
     if LOCK_WINDOW_TO_FRAME_SIZE and not args.windowed:
         window_size = (
@@ -123,10 +149,44 @@ def run() -> int:
         )
     else:
         screen = display.init_window(fullscreen=not args.windowed)
-        current_calibration = calibration_module.load_calibration(
+        current_calibration = calibration_module.make_diagonal_calibration(
             screen.get_size(),
-            allow_fallback=args.allow_fallback_calibration,
+            diagonal_inch=MONITOR_DIAGONAL_INCH,
         )
+
+    if args.calibrate_haptic_surface:
+        top_left = wait_for_mouse_point(screen, "Touch the TOP-LEFT corner of the haptic surface")
+        if top_left is None:
+            pygame.quit()
+            return 0
+        bottom_right = wait_for_mouse_point(screen, "Touch the BOTTOM-RIGHT corner of the haptic surface")
+        if bottom_right is None:
+            pygame.quit()
+            return 0
+        haptic_calibration = calibration_module.make_haptic_surface_calibration(
+            screen.get_size(),
+            top_left=top_left,
+            bottom_right=bottom_right,
+            active_width_mm=args.haptic_width_mm,
+            active_height_mm=args.haptic_height_mm,
+        )
+        path = calibration_module.save_haptic_surface_calibration(haptic_calibration)
+        print(f"Saved haptic surface calibration to {path}")
+        print(
+            "Haptic surface: "
+            f"{haptic_calibration.active_width_px} x {haptic_calibration.active_height_px} px, "
+            f"{haptic_calibration.active_width_mm:.2f} x {haptic_calibration.active_height_mm:.2f} mm, "
+            f"{haptic_calibration.px_per_mm_x:.4f} px/mm X, "
+            f"{haptic_calibration.px_per_mm_y:.4f} px/mm Y"
+        )
+        display.draw_break(screen, "Haptic surface calibration saved")
+        pygame.time.wait(1200)
+        pygame.quit()
+        return 0
+
+    haptic_calibration = calibration_module.load_haptic_surface_calibration(screen.get_size())
+    if haptic_calibration is not None:
+        current_calibration = haptic_calibration
 
     print(
         "Using display calibration "

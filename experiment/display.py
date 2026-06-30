@@ -26,10 +26,20 @@ MUTED: Color = (172, 180, 192)
 class TrialLayout:
     left_bar: pygame.Rect
     right_bar: pygame.Rect
+    haptic_area: pygame.Rect
     left_is_test: bool
     reference_height_mm: float
     test_height_mm: float
     bar_width_mm: float
+
+
+def active_rect(calibration: DisplayCalibration) -> pygame.Rect:
+    return pygame.Rect(
+        calibration.active_left_px,
+        calibration.active_top_px,
+        calibration.active_width_px,
+        calibration.active_height_px,
+    )
 
 
 def init_window(
@@ -53,10 +63,11 @@ def make_trial_layout(
     width_px = max(1, round(bar_width_mm * calibration.px_per_mm_x))
     reference_px = max(1, round(reference_height_mm * calibration.px_per_mm_y))
     test_px = max(1, round(test_height_mm * calibration.px_per_mm_y))
-    _, height = screen.get_size()
-    baseline_y = height - 150
-    left_center_x = screen.get_width() // 4
-    right_center_x = screen.get_width() * 3 // 4
+    haptic_area = active_rect(calibration)
+    baseline_margin = max(8, round(0.08 * haptic_area.height))
+    baseline_y = haptic_area.bottom - baseline_margin
+    left_center_x = haptic_area.left + haptic_area.width // 4
+    right_center_x = haptic_area.left + haptic_area.width * 3 // 4
 
     left_height_px = test_px if left_is_test else reference_px
     right_height_px = reference_px if left_is_test else test_px
@@ -67,6 +78,7 @@ def make_trial_layout(
     return TrialLayout(
         left_bar=left_bar,
         right_bar=right_bar,
+        haptic_area=haptic_area,
         left_is_test=left_is_test,
         reference_height_mm=reference_height_mm,
         test_height_mm=test_height_mm,
@@ -108,6 +120,8 @@ def draw_trial(
         MUTED,
     )
     screen.blit(info, info.get_rect(center=(width // 2, 68)))
+
+    pygame.draw.rect(screen, (70, 78, 90), layout.haptic_area, 1)
 
     pygame.draw.rect(screen, BAR_TEST if layout.left_is_test else BAR_REF, layout.left_bar)
     pygame.draw.rect(screen, BAR_TEST if not layout.left_is_test else BAR_REF, layout.right_bar)
