@@ -9,6 +9,7 @@ from typing import Any
 DATA_DIR = Path(__file__).resolve().parent / "data"
 TRIAL_FIELDS = [
     "width_level",
+    "height_level",
     "trial_number",
     "dH",
     "response",
@@ -16,7 +17,7 @@ TRIAL_FIELDS = [
     "finger_speed",
     "timestamp",
 ]
-SUMMARY_FIELDS = ["width_level", "threshold", "n_trials", "n_reversals", "timestamp"]
+SUMMARY_FIELDS = ["width_level", "height_level", "threshold", "n_trials", "n_reversals", "timestamp"]
 
 
 def ensure_data_dir(data_dir: Path = DATA_DIR) -> Path:

@@ -10,12 +10,14 @@ from typing import Any
 import pygame
 
 from . import display, stimulus
-from .config import FPS, MM_TO_PX, N_REVERSALS
+from .calibration import DisplayCalibration
+from .config import FPS, N_REVERSALS
 
 
 @dataclass(frozen=True)
 class TrialResult:
     width_level: float
+    height_level: float
     trial_number: int
     dH: float
     response: str
@@ -36,18 +38,21 @@ def _side_for_pos(pos: tuple[int, int], layout: display.TrialLayout) -> str | No
 def run_trial(
     screen: pygame.Surface,
     clock: pygame.time.Clock,
+    calibration: DisplayCalibration,
     instrument: Any | None,
     width_level_mm: float,
+    height_level_mm: float,
     dH_mm: float,
     trial_number: int,
     reversals: int,
 ) -> TrialResult | None:
     """Run one 2AFC trial and return the participant response."""
-    reference_height_mm = width_level_mm
+    reference_height_mm = height_level_mm
     test_height_mm = reference_height_mm + dH_mm
     left_is_test = random.choice([True, False])
     layout = display.make_trial_layout(
         screen,
+        calibration=calibration,
         bar_width_mm=width_level_mm,
         reference_height_mm=reference_height_mm,
         test_height_mm=test_height_mm,
@@ -79,6 +84,7 @@ def run_trial(
                     average_speed = sum(speed_samples) / len(speed_samples) if speed_samples else 0.0
                     return TrialResult(
                         width_level=width_level_mm,
+                        height_level=height_level_mm,
                         trial_number=trial_number,
                         dH=dH_mm,
                         response=response,
@@ -90,8 +96,8 @@ def run_trial(
 
         pos = pygame.mouse.get_pos()
         elapsed = max(now - last_time, 1e-6)
-        dx = (pos[0] - last_pos[0]) / MM_TO_PX
-        dy = (pos[1] - last_pos[1]) / MM_TO_PX
+        dx = (pos[0] - last_pos[0]) / calibration.px_per_mm_x
+        dy = (pos[1] - last_pos[1]) / calibration.px_per_mm_y
         speed_mm_s = ((dx * dx + dy * dy) ** 0.5) / elapsed
         if speed_mm_s > 0:
             speed_samples.append(speed_mm_s)
@@ -110,6 +116,7 @@ def run_trial(
             screen,
             layout,
             width_level_mm=width_level_mm,
+            height_level_mm=height_level_mm,
             trial_number=trial_number,
             reversals=reversals,
             total_reversals=N_REVERSALS,

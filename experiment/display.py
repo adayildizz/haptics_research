@@ -6,7 +6,8 @@ from dataclasses import dataclass
 
 import pygame
 
-from .config import MM_TO_PX, SCREEN_HEIGHT, SCREEN_WIDTH
+from .calibration import DisplayCalibration
+from .config import SCREEN_HEIGHT, SCREEN_WIDTH, USE_FULLSCREEN
 
 Color = tuple[int, int, int]
 
@@ -31,21 +32,27 @@ class TrialLayout:
     bar_width_mm: float
 
 
-def init_window() -> pygame.Surface:
+def init_window(
+    fullscreen: bool = USE_FULLSCREEN,
+    size: tuple[int, int] | None = None,
+) -> pygame.Surface:
     pygame.display.set_caption("Height JND 2AFC Experiment")
-    return pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+    if fullscreen:
+        return pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+    return pygame.display.set_mode(size or (SCREEN_WIDTH, SCREEN_HEIGHT))
 
 
 def make_trial_layout(
     screen: pygame.Surface,
+    calibration: DisplayCalibration,
     bar_width_mm: float,
     reference_height_mm: float,
     test_height_mm: float,
     left_is_test: bool,
 ) -> TrialLayout:
-    width_px = max(1, round(bar_width_mm * MM_TO_PX))
-    reference_px = max(1, round(reference_height_mm * MM_TO_PX))
-    test_px = max(1, round(test_height_mm * MM_TO_PX))
+    width_px = max(1, round(bar_width_mm * calibration.px_per_mm_x))
+    reference_px = max(1, round(reference_height_mm * calibration.px_per_mm_y))
+    test_px = max(1, round(test_height_mm * calibration.px_per_mm_y))
     _, height = screen.get_size()
     baseline_y = height - 150
     left_center_x = screen.get_width() // 4
@@ -71,6 +78,7 @@ def draw_trial(
     screen: pygame.Surface,
     layout: TrialLayout,
     width_level_mm: float,
+    height_level_mm: float,
     trial_number: int,
     reversals: int,
     total_reversals: int,
@@ -92,7 +100,10 @@ def draw_trial(
     screen.blit(title, title.get_rect(center=(width // 2, 34)))
 
     info = body_font.render(
-        f"Width {width_level_mm:g} mm    Trial {trial_number}    Reversals {reversals}/{total_reversals}",
+        (
+            f"Width {width_level_mm:g} mm    Height {height_level_mm:g} mm    "
+            f"Trial {trial_number}    Reversals {reversals}/{total_reversals}"
+        ),
         True,
         MUTED,
     )

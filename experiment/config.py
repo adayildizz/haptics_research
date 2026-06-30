@@ -10,11 +10,17 @@ VISA_ADDRESS = "TCPIP0::169.254.2.20::inst0::INSTR"
 # Display/input calibration
 SCREEN_WIDTH = 1280
 SCREEN_HEIGHT = 720
+USE_FULLSCREEN = False
 FPS = 60
-MM_TO_PX = 12.0
+FALLBACK_MM_TO_PX = 12.0
+CALIBRATION_FILENAME = "display_calibration.json"
+LOCK_WINDOW_TO_FRAME_SIZE = True
+FRAME_ACTIVE_WIDTH_MM = 200.0
+FRAME_ACTIVE_HEIGHT_MM = 100.0
 
-# Width levels (mm)
-WIDTH_LEVELS = [2, 4, 6, 8, 10, 12, 14, 16]
+# Stimulus levels (mm)
+WIDTH_LEVELS = [2, 6, 10, 14]
+HEIGHT_LEVELS = [2, 6, 10, 14]
 
 # Height staircase. These are fractions of the current reference height.
 DH_START = 2.0                # 200% of reference height
