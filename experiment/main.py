@@ -16,10 +16,7 @@ from .config import (
     DH_MIN,
     DH_START,
     DH_STEP,
-    HAPTIC_SURFACE_HEIGHT_MM,
-    HAPTIC_SURFACE_WIDTH_MM,
     HEIGHT_LEVELS,
-    MONITOR_DIAGONAL_INCH,
     N_REVERSALS,
     N_REVERSALS_AVERAGED,
     WIDTH_LEVELS,
@@ -62,12 +59,7 @@ def run() -> int:
 
     screen = display.init_window(fullscreen=not args.windowed)
 
-    current_calibration = calibration_module.make_diagonal_centered_calibration(
-        screen.get_size(),
-        diagonal_inch=MONITOR_DIAGONAL_INCH,
-        active_width_mm=HAPTIC_SURFACE_WIDTH_MM,
-        active_height_mm=HAPTIC_SURFACE_HEIGHT_MM,
-    )
+    current_calibration = calibration_module.make_configured_ir_frame_calibration(screen.get_size())
 
     print(
         "Using display calibration "

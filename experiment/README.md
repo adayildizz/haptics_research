@@ -65,18 +65,28 @@ A high-resolution timer (`time.perf_counter()`) controls signal delivery indepen
 
 ## Display and Frame Calibration
 
-The IR frame presents as a virtual mouse mapped to the whole desktop, not just the app window, so the experiment always runs fullscreen (window space = screen space = IR space).
+The IR frame presents as a virtual mouse mapped to the whole desktop, not just the app window, so the experiment normally runs fullscreen (window space = screen space = IR space).
 
-The haptic surface's physical size is fixed in config and never measured at runtime:
-
-```
-HAPTIC_SURFACE_WIDTH_MM = 145.0
-HAPTIC_SURFACE_HEIGHT_MM = 194.0
-```
-
-There is no calibration step or flag. On every run, the app estimates px/mm from the screen diagonal (`MONITOR_DIAGONAL_INCH` in config.py) and current resolution, sizes the fixed mm rectangle in pixels, and centers it on screen. Inside that active area:
+The haptic surface and IR frame geometry are fixed in config and never measured at runtime:
 
 ```
+IR_FRAME_WIDTH_MM = 249.0
+IR_FRAME_HEIGHT_MM = 187.0
+IR_FRAME_SCREEN_WIDTH_PX = 1920
+IR_FRAME_SCREEN_HEIGHT_PX = 1080
+HAPTIC_SURFACE_WIDTH_MM = 194.0
+HAPTIC_SURFACE_HEIGHT_MM = 145.0
+HAPTIC_SURFACE_LEFT_PADDING_MM = 23.0
+HAPTIC_SURFACE_TOP_PADDING_MM = 16.0
+```
+
+There is no calibration step or flag. On every run, the app maps millimeters through the configured IR-frame size and 1920 x 1080 screen mapping, then places the active haptic surface using the configured left/top padding. Inside that active area:
+
+```
+px_per_mm_x = 1920 / 249
+px_per_mm_y = 1080 / 187
+active left px = 23 * px_per_mm_x
+active top px = 16 * px_per_mm_y
 bar width px = bar width mm * px_per_mm_x
 bar height px = bar height mm * px_per_mm_y
 ```
