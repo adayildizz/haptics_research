@@ -30,6 +30,38 @@ def haptic_surface_calibration_path() -> Path:
     return DATA_DIR / HAPTIC_SURFACE_CALIBRATION_FILENAME
 
 
+def _diagonal_px_per_mm(screen_size: tuple[int, int], diagonal_inch: float) -> float:
+    diagonal_mm = diagonal_inch * 25.4
+    diagonal_px = math.hypot(*screen_size)
+    return diagonal_px / diagonal_mm
+
+
+def _build_calibration(
+    screen_size: tuple[int, int],
+    px_per_mm: float,
+    active_width_mm: float,
+    active_height_mm: float,
+    active_left_px: int,
+    active_top_px: int,
+    source: str,
+) -> DisplayCalibration:
+    active_width_px = max(1, round(active_width_mm * px_per_mm))
+    active_height_px = max(1, round(active_height_mm * px_per_mm))
+    return DisplayCalibration(
+        screen_width_px=screen_size[0],
+        screen_height_px=screen_size[1],
+        active_left_px=active_left_px,
+        active_top_px=active_top_px,
+        active_width_px=active_width_px,
+        active_height_px=active_height_px,
+        active_width_mm=active_width_mm,
+        active_height_mm=active_height_mm,
+        px_per_mm_x=px_per_mm,
+        px_per_mm_y=px_per_mm,
+        source=source,
+    )
+
+
 def make_diagonal_centered_calibration(
     screen_size: tuple[int, int],
     diagonal_inch: float,
@@ -41,56 +73,43 @@ def make_diagonal_centered_calibration(
     The physical size (active_width_mm/active_height_mm) is fixed input, not derived —
     only the pixel footprint and position are estimated from the diagonal.
     """
-    screen_width_px, screen_height_px = screen_size
-    diagonal_mm = diagonal_inch * 25.4
-    diagonal_px = math.hypot(screen_width_px, screen_height_px)
-    px_per_mm = diagonal_px / diagonal_mm
-
+    px_per_mm = _diagonal_px_per_mm(screen_size, diagonal_inch)
     active_width_px = max(1, round(active_width_mm * px_per_mm))
     active_height_px = max(1, round(active_height_mm * px_per_mm))
-    active_left_px = max(0, (screen_width_px - active_width_px) // 2)
-    active_top_px = max(0, (screen_height_px - active_height_px) // 2)
-
-    return DisplayCalibration(
-        screen_width_px=screen_width_px,
-        screen_height_px=screen_height_px,
-        active_left_px=active_left_px,
-        active_top_px=active_top_px,
-        active_width_px=active_width_px,
-        active_height_px=active_height_px,
-        active_width_mm=active_width_mm,
-        active_height_mm=active_height_mm,
-        px_per_mm_x=px_per_mm,
-        px_per_mm_y=px_per_mm,
+    active_left_px = max(0, (screen_size[0] - active_width_px) // 2)
+    active_top_px = max(0, (screen_size[1] - active_height_px) // 2)
+    return _build_calibration(
+        screen_size,
+        px_per_mm,
+        active_width_mm,
+        active_height_mm,
+        active_left_px,
+        active_top_px,
         source=f"diagonal_{diagonal_inch:g}in_centered",
     )
 
 
-def make_haptic_surface_calibration(
+def make_positioned_haptic_calibration(
     screen_size: tuple[int, int],
-    top_left: tuple[int, int],
-    bottom_right: tuple[int, int],
+    diagonal_inch: float,
     active_width_mm: float,
     active_height_mm: float,
+    center: tuple[int, int],
 ) -> DisplayCalibration:
-    left = min(top_left[0], bottom_right[0])
-    top = min(top_left[1], bottom_right[1])
-    right = max(top_left[0], bottom_right[0])
-    bottom = max(top_left[1], bottom_right[1])
-    active_width_px = max(1, right - left)
-    active_height_px = max(1, bottom - top)
-    return DisplayCalibration(
-        screen_width_px=screen_size[0],
-        screen_height_px=screen_size[1],
-        active_left_px=left,
-        active_top_px=top,
-        active_width_px=active_width_px,
-        active_height_px=active_height_px,
-        active_width_mm=active_width_mm,
-        active_height_mm=active_height_mm,
-        px_per_mm_x=active_width_px / active_width_mm,
-        px_per_mm_y=active_height_px / active_height_mm,
-        source="haptic_surface_touch",
+    """Same fixed (mm) size as the centered estimate, but positioned around a touched center point."""
+    px_per_mm = _diagonal_px_per_mm(screen_size, diagonal_inch)
+    active_width_px = max(1, round(active_width_mm * px_per_mm))
+    active_height_px = max(1, round(active_height_mm * px_per_mm))
+    active_left_px = center[0] - active_width_px // 2
+    active_top_px = center[1] - active_height_px // 2
+    return _build_calibration(
+        screen_size,
+        px_per_mm,
+        active_width_mm,
+        active_height_mm,
+        active_left_px,
+        active_top_px,
+        source="haptic_surface_positioned",
     )
 
 
