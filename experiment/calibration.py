@@ -30,42 +30,39 @@ def haptic_surface_calibration_path() -> Path:
     return DATA_DIR / HAPTIC_SURFACE_CALIBRATION_FILENAME
 
 
-def make_calibration(
-    screen_size: tuple[int, int],
-    active_width_mm: float,
-    active_height_mm: float,
-    source: str = "measured",
-) -> DisplayCalibration:
-    screen_width_px, screen_height_px = screen_size
-    return DisplayCalibration(
-        screen_width_px=screen_width_px,
-        screen_height_px=screen_height_px,
-        active_left_px=0,
-        active_top_px=0,
-        active_width_px=screen_width_px,
-        active_height_px=screen_height_px,
-        active_width_mm=active_width_mm,
-        active_height_mm=active_height_mm,
-        px_per_mm_x=screen_width_px / active_width_mm,
-        px_per_mm_y=screen_height_px / active_height_mm,
-        source=source,
-    )
-
-
-def make_diagonal_calibration(
+def make_diagonal_centered_calibration(
     screen_size: tuple[int, int],
     diagonal_inch: float,
+    active_width_mm: float,
+    active_height_mm: float,
 ) -> DisplayCalibration:
+    """Estimate px/mm from the screen diagonal, then center a fixed-size (mm) rect on screen.
+
+    The physical size (active_width_mm/active_height_mm) is fixed input, not derived —
+    only the pixel footprint and position are estimated from the diagonal.
+    """
     screen_width_px, screen_height_px = screen_size
     diagonal_mm = diagonal_inch * 25.4
     diagonal_px = math.hypot(screen_width_px, screen_height_px)
-    active_width_mm = diagonal_mm * screen_width_px / diagonal_px
-    active_height_mm = diagonal_mm * screen_height_px / diagonal_px
-    return make_calibration(
-        screen_size,
+    px_per_mm = diagonal_px / diagonal_mm
+
+    active_width_px = max(1, round(active_width_mm * px_per_mm))
+    active_height_px = max(1, round(active_height_mm * px_per_mm))
+    active_left_px = max(0, (screen_width_px - active_width_px) // 2)
+    active_top_px = max(0, (screen_height_px - active_height_px) // 2)
+
+    return DisplayCalibration(
+        screen_width_px=screen_width_px,
+        screen_height_px=screen_height_px,
+        active_left_px=active_left_px,
+        active_top_px=active_top_px,
+        active_width_px=active_width_px,
+        active_height_px=active_height_px,
         active_width_mm=active_width_mm,
         active_height_mm=active_height_mm,
-        source=f"diagonal_{diagonal_inch:g}in",
+        px_per_mm_x=px_per_mm,
+        px_per_mm_y=px_per_mm,
+        source=f"diagonal_{diagonal_inch:g}in_centered",
     )
 
 

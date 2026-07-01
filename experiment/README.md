@@ -67,23 +67,28 @@ A high-resolution timer (`time.perf_counter()`) controls signal delivery indepen
 
 The IR frame presents as a virtual mouse mapped to the whole desktop, not just the app window, so the experiment always runs fullscreen (window space = screen space = IR space). Because the screen, frame, and haptic surface are almost always the same physical rig, calibration is meant to be done once and reused, not redone per run.
 
-The haptic feedback surface is usually smaller than the screen/frame. Calibrate it directly:
+The haptic surface's physical size is fixed in config and rarely changes:
 
-```bash
-python3 -m experiment.main --mode demo --calibrate-haptic-surface --haptic-width-mm <WIDTH_MM> --haptic-height-mm <HEIGHT_MM>
+```
+HAPTIC_SURFACE_WIDTH_MM = 145.0
+HAPTIC_SURFACE_HEIGHT_MM = 194.0
 ```
 
-The app asks for the haptic surface top-left and bottom-right corners. Touch/hold each corner and press SPACE. This saves `experiment/data/haptic_surface_calibration.json`.
+What *can* change between runs is where that surface sits in screen pixels (position + px/mm), so there are two ways to get that:
 
-**By default, a run requires this file to exist** and uses it as the active area for drawing bars and computing finger speed. If it's missing, the app prints an error and exits instead of silently guessing. Only redo the touch calibration if the physical rig changes.
+1. **Touch calibration (accurate, persists across runs)**:
+   ```bash
+   python3 -m experiment.main --mode demo --calibrate-haptic-surface --haptic-width-mm <WIDTH_MM> --haptic-height-mm <HEIGHT_MM>
+   ```
+   The app asks for the haptic surface's top-left and bottom-right corners. Touch/hold each corner and press SPACE. This saves `experiment/data/haptic_surface_calibration.json`, which is loaded automatically on every later run. Only redo this if the physical rig changes.
 
-If you need a rough estimate instead (no physical rig calibrated yet, quick demo on an arbitrary monitor), pass `--diagonal-calibration` to fall back to a screen-diagonal-based px/mm estimate:
+2. **Diagonal estimate (no touching, same fixed mm size, just estimated position)**: pass `--diagonal-calibration` to skip the saved file and instead estimate px/mm from the screen diagonal (`MONITOR_DIAGONAL_INCH` in config.py) and current resolution, then center a `HAPTIC_SURFACE_WIDTH_MM` x `HAPTIC_SURFACE_HEIGHT_MM` rectangle on the screen:
+   ```bash
+   python3 -m experiment.main --mode demo --diagonal-calibration
+   ```
+   This never changes the haptic surface's physical size — only its estimated pixel footprint and (centered) position. It is a rough estimate, not a measurement.
 
-```bash
-python3 -m experiment.main --mode demo --diagonal-calibration
-```
-
-This estimates how many screen pixels correspond to 1 physical millimeter from the fixed monitor diagonal (`MONITOR_DIAGONAL_INCH` in config.py) and current screen resolution, treating the whole screen as the active area — it is not a measurement and should not be used for real trials. Inside the active area:
+**Without `--diagonal-calibration`**, a run tries the saved touch calibration first; if `haptic_surface_calibration.json` doesn't exist yet, it falls back to the same diagonal-based centered estimate as above, so the app never fails to start. Inside the active area:
 
 ```
 bar width px = bar width mm * px_per_mm_x

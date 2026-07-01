@@ -125,21 +125,21 @@ def run() -> int:
         return 0
 
     if args.diagonal_calibration:
-        current_calibration = calibration_module.make_diagonal_calibration(
+        current_calibration = calibration_module.make_diagonal_centered_calibration(
             screen.get_size(),
             diagonal_inch=MONITOR_DIAGONAL_INCH,
+            active_width_mm=HAPTIC_SURFACE_WIDTH_MM,
+            active_height_mm=HAPTIC_SURFACE_HEIGHT_MM,
         )
     else:
         current_calibration = calibration_module.load_haptic_surface_calibration(screen.get_size())
         if current_calibration is None:
-            print(
-                "Haptik yüzey kalibrasyonu bulunamadı "
-                f"({calibration_module.haptic_surface_calibration_path()}). "
-                "Önce '--calibrate-haptic-surface' ile kalibre edin, "
-                "ya da kaba bir tahmin için '--diagonal-calibration' kullanın."
+            current_calibration = calibration_module.make_diagonal_centered_calibration(
+                screen.get_size(),
+                diagonal_inch=MONITOR_DIAGONAL_INCH,
+                active_width_mm=HAPTIC_SURFACE_WIDTH_MM,
+                active_height_mm=HAPTIC_SURFACE_HEIGHT_MM,
             )
-            pygame.quit()
-            return 2
 
     print(
         "Using display calibration "
