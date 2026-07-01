@@ -16,7 +16,6 @@ from .config import (
     DH_MIN,
     DH_START,
     DH_STEP,
-    FPS,
     HAPTIC_SURFACE_HEIGHT_MM,
     HAPTIC_SURFACE_WIDTH_MM,
     HEIGHT_LEVELS,
@@ -34,7 +33,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--participant", default=time.strftime("%Y%m%d_%H%M%S"))
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--windowed", action="store_true", help="Use the configured debug window size instead of fullscreen.")
-    parser.add_argument("--position-haptic-surface", action="store_true", help="Touch the center of the haptic surface to (re)position it on screen. Size is fixed in config.")
     return parser.parse_args()
 
 
@@ -51,33 +49,6 @@ def wait_for_space_or_escape(screen: pygame.Surface, message: str) -> bool:
                     return True
 
 
-def wait_for_mouse_point(screen: pygame.Surface, message: str) -> tuple[int, int] | None:
-    font = pygame.font.SysFont("Arial", 26, bold=True)
-    subfont = pygame.font.SysFont("Arial", 20)
-    clock = pygame.time.Clock()
-    while True:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                return None
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_ESCAPE:
-                    return None
-                if event.key == pygame.K_SPACE:
-                    return pygame.mouse.get_pos()
-
-        screen.fill(display.BACKGROUND)
-        pos = pygame.mouse.get_pos()
-        text = font.render(message, True, display.TEXT)
-        hint = subfont.render("Touch/hold the point, then press SPACE. ESC exits.", True, display.MUTED)
-        coords = subfont.render(f"Current mouse/IR position: {pos[0]}, {pos[1]}", True, display.MUTED)
-        screen.blit(text, text.get_rect(center=(screen.get_width() // 2, screen.get_height() // 2 - 52)))
-        screen.blit(hint, hint.get_rect(center=(screen.get_width() // 2, screen.get_height() // 2)))
-        screen.blit(coords, coords.get_rect(center=(screen.get_width() // 2, screen.get_height() // 2 + 36)))
-        pygame.draw.circle(screen, display.TEXT, pos, 8, 2)
-        pygame.display.flip()
-        clock.tick(FPS)
-
-
 def run() -> int:
     args = parse_args()
     if args.seed is not None:
@@ -91,41 +62,12 @@ def run() -> int:
 
     screen = display.init_window(fullscreen=not args.windowed)
 
-    if args.position_haptic_surface:
-        center = wait_for_mouse_point(screen, "Touch the CENTER of the haptic surface")
-        if center is None:
-            pygame.quit()
-            return 0
-        haptic_calibration = calibration_module.make_positioned_haptic_calibration(
-            screen.get_size(),
-            diagonal_inch=MONITOR_DIAGONAL_INCH,
-            active_width_mm=HAPTIC_SURFACE_WIDTH_MM,
-            active_height_mm=HAPTIC_SURFACE_HEIGHT_MM,
-            center=center,
-        )
-        path = calibration_module.save_haptic_surface_calibration(haptic_calibration)
-        print(f"Saved haptic surface position to {path}")
-        print(
-            "Haptic surface: "
-            f"{haptic_calibration.active_width_px} x {haptic_calibration.active_height_px} px "
-            f"at ({haptic_calibration.active_left_px}, {haptic_calibration.active_top_px}), "
-            f"{haptic_calibration.active_width_mm:.2f} x {haptic_calibration.active_height_mm:.2f} mm, "
-            f"{haptic_calibration.px_per_mm_x:.4f} px/mm X, "
-            f"{haptic_calibration.px_per_mm_y:.4f} px/mm Y"
-        )
-        display.draw_break(screen, "Haptic surface position saved")
-        pygame.time.wait(1200)
-        pygame.quit()
-        return 0
-
-    current_calibration = calibration_module.load_haptic_surface_calibration(screen.get_size())
-    if current_calibration is None:
-        current_calibration = calibration_module.make_diagonal_centered_calibration(
-            screen.get_size(),
-            diagonal_inch=MONITOR_DIAGONAL_INCH,
-            active_width_mm=HAPTIC_SURFACE_WIDTH_MM,
-            active_height_mm=HAPTIC_SURFACE_HEIGHT_MM,
-        )
+    current_calibration = calibration_module.make_diagonal_centered_calibration(
+        screen.get_size(),
+        diagonal_inch=MONITOR_DIAGONAL_INCH,
+        active_width_mm=HAPTIC_SURFACE_WIDTH_MM,
+        active_height_mm=HAPTIC_SURFACE_HEIGHT_MM,
+    )
 
     print(
         "Using display calibration "

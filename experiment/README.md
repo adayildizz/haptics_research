@@ -65,7 +65,7 @@ A high-resolution timer (`time.perf_counter()`) controls signal delivery indepen
 
 ## Display and Frame Calibration
 
-The IR frame presents as a virtual mouse mapped to the whole desktop, not just the app window, so the experiment always runs fullscreen (window space = screen space = IR space). Because the screen, frame, and haptic surface are almost always the same physical rig, calibration is meant to be done once and reused, not redone per run.
+The IR frame presents as a virtual mouse mapped to the whole desktop, not just the app window, so the experiment always runs fullscreen (window space = screen space = IR space).
 
 The haptic surface's physical size is fixed in config and never measured at runtime:
 
@@ -74,15 +74,7 @@ HAPTIC_SURFACE_WIDTH_MM = 145.0
 HAPTIC_SURFACE_HEIGHT_MM = 194.0
 ```
 
-What *can* vary is where that fixed-size rectangle sits in screen pixels. There is a single calibration flag, and it only adjusts position, never size:
-
-```bash
-python3 -m experiment.main --mode demo --position-haptic-surface
-```
-
-The app asks you to touch/hold the **center** of the haptic surface and press SPACE. It estimates px/mm from the screen diagonal (`MONITOR_DIAGONAL_INCH` in config.py) and current resolution, sizes the fixed mm rectangle in pixels, and places it centered on your touched point. This saves `experiment/data/haptic_surface_calibration.json`, which is loaded automatically on every later run. Only redo this if the physical rig moves.
-
-**Without the flag**, a run loads that saved position if the file exists; if it doesn't exist yet (never positioned), it falls back to centering the same fixed-size rectangle in the middle of the screen, so the app never fails to start. Inside the active area:
+There is no calibration step or flag. On every run, the app estimates px/mm from the screen diagonal (`MONITOR_DIAGONAL_INCH` in config.py) and current resolution, sizes the fixed mm rectangle in pixels, and centers it on screen. Inside that active area:
 
 ```
 bar width px = bar width mm * px_per_mm_x
