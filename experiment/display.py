@@ -20,6 +20,7 @@ BAR_TEST: Color = (72, 187, 120)
 BAR_OUTLINE: Color = (230, 235, 240)
 TEXT: Color = (238, 242, 247)
 MUTED: Color = (172, 180, 192)
+HAPTIC_BORDER: Color = (245, 166, 35)
 
 
 @dataclass(frozen=True)
@@ -121,7 +122,7 @@ def draw_trial(
     )
     screen.blit(info, info.get_rect(center=(width // 2, 68)))
 
-    pygame.draw.rect(screen, (70, 78, 90), layout.haptic_area, 1)
+    pygame.draw.rect(screen, HAPTIC_BORDER, layout.haptic_area, 3)
 
     pygame.draw.rect(screen, BAR_TEST if layout.left_is_test else BAR_REF, layout.left_bar)
     pygame.draw.rect(screen, BAR_TEST if not layout.left_is_test else BAR_REF, layout.right_bar)

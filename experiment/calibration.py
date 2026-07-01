@@ -7,11 +7,7 @@ import math
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-from .config import (
-    CALIBRATION_FILENAME,
-    FALLBACK_MM_TO_PX,
-    HAPTIC_SURFACE_CALIBRATION_FILENAME,
-)
+from .config import HAPTIC_SURFACE_CALIBRATION_FILENAME
 from .data_logger import DATA_DIR, ensure_data_dir
 
 
@@ -28,10 +24,6 @@ class DisplayCalibration:
     px_per_mm_x: float
     px_per_mm_y: float
     source: str
-
-
-def calibration_path() -> Path:
-    return DATA_DIR / CALIBRATION_FILENAME
 
 
 def haptic_surface_calibration_path() -> Path:
@@ -77,23 +69,6 @@ def make_diagonal_calibration(
     )
 
 
-def fallback_calibration(screen_size: tuple[int, int]) -> DisplayCalibration:
-    screen_width_px, screen_height_px = screen_size
-    return DisplayCalibration(
-        screen_width_px=screen_width_px,
-        screen_height_px=screen_height_px,
-        active_left_px=0,
-        active_top_px=0,
-        active_width_px=screen_width_px,
-        active_height_px=screen_height_px,
-        active_width_mm=screen_width_px / FALLBACK_MM_TO_PX,
-        active_height_mm=screen_height_px / FALLBACK_MM_TO_PX,
-        px_per_mm_x=FALLBACK_MM_TO_PX,
-        px_per_mm_y=FALLBACK_MM_TO_PX,
-        source="fallback",
-    )
-
-
 def make_haptic_surface_calibration(
     screen_size: tuple[int, int],
     top_left: tuple[int, int],
@@ -122,17 +97,13 @@ def make_haptic_surface_calibration(
     )
 
 
-def save_calibration(calibration: DisplayCalibration, path: Path | None = None) -> Path:
+def save_haptic_surface_calibration(calibration: DisplayCalibration) -> Path:
     ensure_data_dir()
-    output_path = calibration_path() if path is None else path
+    output_path = haptic_surface_calibration_path()
     with output_path.open("w") as file:
         json.dump(asdict(calibration), file, indent=2)
         file.write("\n")
     return output_path
-
-
-def save_haptic_surface_calibration(calibration: DisplayCalibration) -> Path:
-    return save_calibration(calibration, haptic_surface_calibration_path())
 
 
 def _read_calibration_file(path: Path) -> DisplayCalibration:
@@ -186,28 +157,6 @@ def _rescale_calibration(
         px_per_mm_y=max(1, active_height_px) / calibration.active_height_mm,
         source=f"{calibration.source}_rescaled",
     )
-
-
-def load_calibration(
-    screen_size: tuple[int, int],
-    path: Path | None = None,
-    allow_fallback: bool = False,
-) -> DisplayCalibration:
-    input_path = calibration_path() if path is None else path
-    if not input_path.exists():
-        if allow_fallback:
-            return fallback_calibration(screen_size)
-        raise FileNotFoundError(
-            f"No display calibration found at {input_path}. "
-            "Run calibration first with --calibrate --active-width-mm ... --active-height-mm ..."
-        )
-
-    calibration = _read_calibration_file(input_path)
-
-    if (calibration.screen_width_px, calibration.screen_height_px) != screen_size:
-        return _rescale_calibration(calibration, screen_size)
-
-    return calibration
 
 
 def load_haptic_surface_calibration(

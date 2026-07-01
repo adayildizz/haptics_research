@@ -17,10 +17,9 @@ from .config import (
     DH_START,
     DH_STEP,
     FPS,
-    FRAME_ACTIVE_HEIGHT_MM,
-    FRAME_ACTIVE_WIDTH_MM,
+    HAPTIC_SURFACE_HEIGHT_MM,
+    HAPTIC_SURFACE_WIDTH_MM,
     HEIGHT_LEVELS,
-    LOCK_WINDOW_TO_FRAME_SIZE,
     MONITOR_DIAGONAL_INCH,
     N_REVERSALS,
     N_REVERSALS_AVERAGED,
@@ -34,15 +33,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--mode", choices=["demo", "experiment"], default="experiment")
     parser.add_argument("--participant", default=time.strftime("%Y%m%d_%H%M%S"))
     parser.add_argument("--seed", type=int, default=None)
-    parser.add_argument("--windowed", action="store_true", help="Use the configured debug window size instead of the frame-sized experiment window.")
-    parser.add_argument("--calibrate", action="store_true", help="Optional: save a physical display calibration and exit.")
-    parser.add_argument("--allow-fallback-calibration", action="store_true", help="Use the rough fallback px/mm value if no calibration exists.")
-    parser.add_argument("--active-width-mm", type=float, help="Measured active tactile/display width in millimeters.")
-    parser.add_argument("--active-height-mm", type=float, help="Measured active tactile/display height in millimeters.")
-    parser.add_argument("--screen-diagonal-inch", type=float, help="Approximate calibration from screen diagonal and current fullscreen aspect ratio.")
+    parser.add_argument("--windowed", action="store_true", help="Use the configured debug window size instead of fullscreen.")
+    parser.add_argument("--diagonal-calibration", action="store_true", help="Use a rough screen-diagonal px/mm estimate instead of the saved haptic surface calibration.")
     parser.add_argument("--calibrate-haptic-surface", action="store_true", help="Touch-calibrate the haptic surface area inside the experiment window.")
-    parser.add_argument("--haptic-width-mm", type=float, default=FRAME_ACTIVE_WIDTH_MM, help="Measured haptic surface width in millimeters.")
-    parser.add_argument("--haptic-height-mm", type=float, default=FRAME_ACTIVE_HEIGHT_MM, help="Measured haptic surface height in millimeters.")
+    parser.add_argument("--haptic-width-mm", type=float, default=HAPTIC_SURFACE_WIDTH_MM, help="Measured haptic surface width in millimeters.")
+    parser.add_argument("--haptic-height-mm", type=float, default=HAPTIC_SURFACE_HEIGHT_MM, help="Measured haptic surface height in millimeters.")
     return parser.parse_args()
 
 
@@ -97,62 +92,7 @@ def run() -> int:
     trial_path = data_dir / f"{args.participant}_trials.csv"
     summary_path = data_dir / f"{args.participant}_thresholds.csv"
 
-    if args.calibrate:
-        screen = display.init_window(fullscreen=not args.windowed)
-        if args.screen_diagonal_inch is not None:
-            current_calibration = calibration_module.make_diagonal_calibration(
-                screen.get_size(),
-                diagonal_inch=args.screen_diagonal_inch,
-            )
-        elif args.active_width_mm is not None and args.active_height_mm is not None:
-            current_calibration = calibration_module.make_calibration(
-                screen.get_size(),
-                active_width_mm=args.active_width_mm,
-                active_height_mm=args.active_height_mm,
-            )
-        else:
-            print("--calibrate requires either --screen-diagonal-inch or both --active-width-mm and --active-height-mm")
-            pygame.quit()
-            return 2
-        path = calibration_module.save_calibration(current_calibration)
-        print(f"Saved calibration to {path}")
-        print(
-            "Calibration: "
-            f"{current_calibration.active_width_mm:.2f} mm x "
-            f"{current_calibration.active_height_mm:.2f} mm, "
-            f"{current_calibration.px_per_mm_x:.4f} px/mm X, "
-            f"{current_calibration.px_per_mm_y:.4f} px/mm Y"
-        )
-        display.draw_break(screen, "Calibration saved")
-        pygame.time.wait(1200)
-        pygame.quit()
-        return 0
-
-    desktop_info = pygame.display.Info()
-    desktop_size = (desktop_info.current_w, desktop_info.current_h)
-    display_calibration = calibration_module.make_diagonal_calibration(
-        desktop_size,
-        diagonal_inch=MONITOR_DIAGONAL_INCH,
-    )
-
-    if LOCK_WINDOW_TO_FRAME_SIZE and not args.windowed:
-        window_size = (
-            max(1, round(FRAME_ACTIVE_WIDTH_MM * display_calibration.px_per_mm_x)),
-            max(1, round(FRAME_ACTIVE_HEIGHT_MM * display_calibration.px_per_mm_y)),
-        )
-        screen = display.init_window(fullscreen=False, size=window_size)
-        current_calibration = calibration_module.make_calibration(
-            screen.get_size(),
-            active_width_mm=FRAME_ACTIVE_WIDTH_MM,
-            active_height_mm=FRAME_ACTIVE_HEIGHT_MM,
-            source=f"frame_window_{display_calibration.source}",
-        )
-    else:
-        screen = display.init_window(fullscreen=not args.windowed)
-        current_calibration = calibration_module.make_diagonal_calibration(
-            screen.get_size(),
-            diagonal_inch=MONITOR_DIAGONAL_INCH,
-        )
+    screen = display.init_window(fullscreen=not args.windowed)
 
     if args.calibrate_haptic_surface:
         top_left = wait_for_mouse_point(screen, "Touch the TOP-LEFT corner of the haptic surface")
@@ -184,9 +124,22 @@ def run() -> int:
         pygame.quit()
         return 0
 
-    haptic_calibration = calibration_module.load_haptic_surface_calibration(screen.get_size())
-    if haptic_calibration is not None:
-        current_calibration = haptic_calibration
+    if args.diagonal_calibration:
+        current_calibration = calibration_module.make_diagonal_calibration(
+            screen.get_size(),
+            diagonal_inch=MONITOR_DIAGONAL_INCH,
+        )
+    else:
+        current_calibration = calibration_module.load_haptic_surface_calibration(screen.get_size())
+        if current_calibration is None:
+            print(
+                "Haptik yüzey kalibrasyonu bulunamadı "
+                f"({calibration_module.haptic_surface_calibration_path()}). "
+                "Önce '--calibrate-haptic-surface' ile kalibre edin, "
+                "ya da kaba bir tahmin için '--diagonal-calibration' kullanın."
+            )
+            pygame.quit()
+            return 2
 
     print(
         "Using display calibration "
