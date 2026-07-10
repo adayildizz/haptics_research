@@ -6,21 +6,21 @@ import time
 from typing import Any
 
 from .config import (
-    CARRIER_FREQUENCY,
     DISABLE_OUTPUT_WHEN_OFF,
     MAX_SIGNAL_DURATION_S,
     MIN_SPEED_MM_S,
     MIN_VOLTAGE,
     OFFSET_V,
-    PEAK_VOLTAGE,
     VISA_ADDRESS,
     WAVE_SQUARE,
+    ExperimentConfig,
 )
 
 _current_waveform: str | None = None
 _current_frequency: float | None = None
 _current_voltage: float | None = None
 _output_enabled = False
+_voltage_peak: float = MIN_VOLTAGE
 
 
 def _reset_cached_state() -> None:
@@ -47,7 +47,7 @@ def _write_frequency(instrument: Any, frequency: float, *, force: bool = False) 
 
 def _write_voltage(instrument: Any, voltage: float, *, force: bool = False) -> None:
     global _current_voltage
-    clamped_voltage = max(MIN_VOLTAGE, min(voltage, PEAK_VOLTAGE))
+    clamped_voltage = max(MIN_VOLTAGE, min(voltage, _voltage_peak))
     if force or _current_voltage is None or abs(clamped_voltage - _current_voltage) > 0.05:
         instrument.write(f"VOLT {clamped_voltage:.2f}")
         _current_voltage = clamped_voltage
@@ -60,16 +60,18 @@ def _write_output(instrument: Any, enabled: bool, *, force: bool = False) -> Non
         _output_enabled = enabled
 
 
-def connect_hardware(address: str = VISA_ADDRESS) -> Any | None:
-    """Open and configure the VISA signal generator.
+def connect_hardware(cfg: ExperimentConfig, address: str = VISA_ADDRESS) -> Any | None:
+    """Open and configure the VISA signal generator using ``cfg``'s carrier/voltage.
 
     Returns ``None`` when PyVISA or the instrument is unavailable so demo mode
     can run without hardware.
     """
+    global _voltage_peak
     try:
         import pyvisa
 
         _reset_cached_state()
+        _voltage_peak = cfg.voltage_peak
         rm = pyvisa.ResourceManager()
         instrument = rm.open_resource(address)
         instrument.write_termination = "\n"
@@ -80,28 +82,28 @@ def connect_hardware(address: str = VISA_ADDRESS) -> Any | None:
         instrument.write(f"VOLT:OFFS {OFFSET_V}")
         _write_waveform(instrument, WAVE_SQUARE, force=True)
         instrument.write("FUNC:SQU:DCYC 50")
-        _write_frequency(instrument, CARRIER_FREQUENCY, force=True)
+        _write_frequency(instrument, cfg.carrier_freq_hz, force=True)
         _write_voltage(instrument, MIN_VOLTAGE, force=True)
         _write_output(instrument, not DISABLE_OUTPUT_WHEN_OFF, force=True)
         print(f"Connected to signal generator: {instrument.query('*IDN?').strip()}")
         return instrument
     except Exception as exc:
         print(f"Hardware unavailable ({exc}). Running without electroadhesion output.")
+        _voltage_peak = cfg.voltage_peak
         return None
 
 
 def signal_on(instrument: Any | None) -> None:
-    """Activate the bar interior signal."""
+    """Activate the bar-interior signal. Bar interior = ON, exterior = OFF."""
     if instrument is None:
         return
     _write_waveform(instrument, WAVE_SQUARE)
-    _write_frequency(instrument, CARRIER_FREQUENCY)
-    _write_voltage(instrument, PEAK_VOLTAGE)
+    _write_voltage(instrument, _voltage_peak)
     _write_output(instrument, True)
 
 
 def signal_off(instrument: Any | None) -> None:
-    """Deactivate the signal for bar exterior regions."""
+    """Deactivate the signal for bar-exterior regions."""
     if instrument is None:
         return
     if DISABLE_OUTPUT_WHEN_OFF:

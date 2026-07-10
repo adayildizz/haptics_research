@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 class StairCase:
     def __init__(self, start: float, step: float, min_val: float, n_reversals: int, n_averaged: int) -> None:
         self.current = start
@@ -33,3 +36,21 @@ class StairCase:
 
     def threshold(self) -> float:
         return sum(self.reversals[-self.n_averaged:]) / self.n_averaged
+
+
+def pilot_range_check(pilot_threshold_pct: float, delta_max_pct: float) -> str | None:
+    """Warn when the constant-stimuli range looks too narrow for the pilot JND.
+
+    Returns a human-readable warning if ``pilot_threshold_pct`` exceeds
+    ``delta_max_pct / 1.5`` (i.e. the fitted JND would fall outside the
+    range where the psychometric curve has enough room to rise from floor to
+    ceiling), otherwise ``None``.
+    """
+    limit = delta_max_pct / 1.5
+    if pilot_threshold_pct > limit:
+        return (
+            f"Pilot JND ({pilot_threshold_pct:.1%}) exceeds delta_max_pct/1.5 "
+            f"({limit:.1%}). The configured delta_max_pct={delta_max_pct:.1%} range "
+            "is probably too narrow for constant stimuli -- consider widening it."
+        )
+    return None

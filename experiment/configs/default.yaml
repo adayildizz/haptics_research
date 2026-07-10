@@ -1,0 +1,26 @@
+# Example ExperimentConfig for one base-height x width configuration.
+# Any field not listed here falls back to the dataclass default in config.py.
+# The supervisor should copy this file per configuration rather than edit
+# code -- changing any value here changes the experiment with zero code edits.
+
+base_height_mm: 10.0
+bar_width_mm: 10.0
+inter_bar_gap_mm: 40.0
+
+delta_max_pct: 0.30
+n_levels: 6
+include_zero_level: false
+trials_per_level: 10
+catch_trial_pct: 0.10
+
+feedback: false
+n_practice_trials: 8
+break_every_n_trials: 30
+
+carrier_freq_hz: 125.0
+voltage_peak: 4.0
+ir_sample_hz_nominal: 100.0
+
+rng_seed: null
+participant_id: ""
+mode: constant_stimuli

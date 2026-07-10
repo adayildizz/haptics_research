@@ -6,3 +6,13 @@ pygame>=2.0.0
 # Used for VISA communication with the signal generator hardware
 pyvisa>=1.11.3
 opencv-python
+
+# --- Constant-stimuli experiment config + analysis ---
+numpy>=1.24
+pyyaml>=6.0
+scipy>=1.10
+matplotlib>=3.7
+psignifit>=4.0; python_version >= "3.8"
+
+# --- Tests ---
+pytest>=7.0

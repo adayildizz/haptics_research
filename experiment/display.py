@@ -16,11 +16,13 @@ PANEL: Color = (32, 36, 44)
 PANEL_ACTIVE: Color = (42, 50, 62)
 DIVIDER: Color = (110, 116, 128)
 BAR_REF: Color = (66, 153, 225)
-BAR_TEST: Color = (72, 187, 120)
+BAR_COMPARISON: Color = (72, 187, 120)
 BAR_OUTLINE: Color = (230, 235, 240)
 TEXT: Color = (238, 242, 247)
 MUTED: Color = (172, 180, 192)
 HAPTIC_BORDER: Color = (245, 166, 35)
+FEEDBACK_CORRECT: Color = (72, 187, 120)
+FEEDBACK_INCORRECT: Color = (220, 90, 90)
 
 
 @dataclass(frozen=True)
@@ -28,9 +30,9 @@ class TrialLayout:
     left_bar: pygame.Rect
     right_bar: pygame.Rect
     haptic_area: pygame.Rect
-    left_is_test: bool
+    left_is_comparison: bool
     reference_height_mm: float
-    test_height_mm: float
+    comparison_height_mm: float
     bar_width_mm: float
 
 
@@ -58,20 +60,24 @@ def make_trial_layout(
     calibration: DisplayCalibration,
     bar_width_mm: float,
     reference_height_mm: float,
-    test_height_mm: float,
-    left_is_test: bool,
+    comparison_height_mm: float,
+    left_is_comparison: bool,
+    inter_bar_gap_mm: float,
 ) -> TrialLayout:
     width_px = max(1, round(bar_width_mm * calibration.px_per_mm_x))
+    gap_px = max(1, round(inter_bar_gap_mm * calibration.px_per_mm_x))
     reference_px = max(1, round(reference_height_mm * calibration.px_per_mm_y))
-    test_px = max(1, round(test_height_mm * calibration.px_per_mm_y))
+    comparison_px = max(1, round(comparison_height_mm * calibration.px_per_mm_y))
     haptic_area = active_rect(calibration)
     baseline_margin = max(8, round(0.08 * haptic_area.height))
     baseline_y = haptic_area.bottom - baseline_margin
-    left_center_x = haptic_area.left + haptic_area.width // 4
-    right_center_x = haptic_area.left + haptic_area.width * 3 // 4
 
-    left_height_px = test_px if left_is_test else reference_px
-    right_height_px = reference_px if left_is_test else test_px
+    center_x = haptic_area.left + haptic_area.width // 2
+    left_center_x = center_x - gap_px // 2 - width_px // 2
+    right_center_x = center_x + gap_px // 2 + width_px // 2
+
+    left_height_px = comparison_px if left_is_comparison else reference_px
+    right_height_px = reference_px if left_is_comparison else comparison_px
     left_bar = pygame.Rect(0, 0, width_px, left_height_px)
     right_bar = pygame.Rect(0, 0, width_px, right_height_px)
     left_bar.midbottom = (left_center_x, baseline_y)
@@ -80,9 +86,9 @@ def make_trial_layout(
         left_bar=left_bar,
         right_bar=right_bar,
         haptic_area=haptic_area,
-        left_is_test=left_is_test,
+        left_is_comparison=left_is_comparison,
         reference_height_mm=reference_height_mm,
-        test_height_mm=test_height_mm,
+        comparison_height_mm=comparison_height_mm,
         bar_width_mm=bar_width_mm,
     )
 
@@ -90,11 +96,9 @@ def make_trial_layout(
 def draw_trial(
     screen: pygame.Surface,
     layout: TrialLayout,
-    width_level_mm: float,
-    height_level_mm: float,
-    trial_number: int,
-    reversals: int,
-    total_reversals: int,
+    bar_width_mm: float,
+    trial_index: int,
+    is_practice: bool,
     active_side: str | None = None,
 ) -> None:
     screen.fill(BACKGROUND)
@@ -112,20 +116,14 @@ def draw_trial(
     title = title_font.render("Which bar is taller? Press left or right arrow", True, TEXT)
     screen.blit(title, title.get_rect(center=(width // 2, 34)))
 
-    info = body_font.render(
-        (
-            f"Width {width_level_mm:g} mm    Height {height_level_mm:g} mm    "
-            f"Trial {trial_number}    Reversals {reversals}/{total_reversals}"
-        ),
-        True,
-        MUTED,
-    )
+    label = "Practice" if is_practice else "Trial"
+    info = body_font.render(f"Width {bar_width_mm:g} mm    {label} {trial_index}", True, MUTED)
     screen.blit(info, info.get_rect(center=(width // 2, 68)))
 
     pygame.draw.rect(screen, HAPTIC_BORDER, layout.haptic_area, 3)
 
-    pygame.draw.rect(screen, BAR_TEST if layout.left_is_test else BAR_REF, layout.left_bar)
-    pygame.draw.rect(screen, BAR_TEST if not layout.left_is_test else BAR_REF, layout.right_bar)
+    pygame.draw.rect(screen, BAR_COMPARISON if layout.left_is_comparison else BAR_REF, layout.left_bar)
+    pygame.draw.rect(screen, BAR_COMPARISON if not layout.left_is_comparison else BAR_REF, layout.right_bar)
     pygame.draw.rect(screen, BAR_OUTLINE, layout.left_bar, 2)
     pygame.draw.rect(screen, BAR_OUTLINE, layout.right_bar, 2)
 
@@ -136,6 +134,14 @@ def draw_trial(
 
     hint = body_font.render("Explore both sides, then answer. ESC exits safely.", True, MUTED)
     screen.blit(hint, hint.get_rect(center=(width // 2, height - 34)))
+
+
+def draw_feedback(screen: pygame.Surface, correct: bool) -> None:
+    width, height = screen.get_size()
+    font = pygame.font.SysFont("Arial", 36, bold=True)
+    color = FEEDBACK_CORRECT if correct else FEEDBACK_INCORRECT
+    text = font.render("Correct" if correct else "Incorrect", True, color)
+    screen.blit(text, text.get_rect(center=(width // 2, height // 2)))
 
 
 def draw_break(screen: pygame.Surface, message: str) -> None:

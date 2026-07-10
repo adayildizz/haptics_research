@@ -1,10 +1,6 @@
 # Tactile Bar Graph Perception Experiment
 
-Psychophysics experiment measuring height JND (just noticeable difference) for electroadhesion-based tactile bar graphs across independent bar-width and reference-height levels. The goal is to characterize tactile height discrimination without visual information, enabling data access for non-visual users.
-
-## Research Question
-
-How do bar width and reference height affect the JND threshold for bar height in a tactile bar graph rendered via electroadhesion?
+Psychophysics experiment measuring the JND (just noticeable difference) for tactile bar height on an electroadhesion haptic display, using the method of constant stimuli. The goal is to characterize tactile height discrimination without visual information, enabling data access for non-visual users.
 
 ## Hardware
 
@@ -14,44 +10,21 @@ How do bar width and reference height affect the JND threshold for bar height in
 | Position sensor | Nexio NIB170BP infrared frame, ~100 Hz |
 | Interface | IR frame presents as virtual mouse via OS driver |
 
-## Experimental Design
+## Experimental Design: Method of Constant Stimuli
 
-### Structure
+One base (reference) height and one bar width are fixed per session (a "configuration"). Comparison heights are placed symmetrically around the base at fixed percentage offsets (`±delta_max_pct` by default), with a fixed number of trials per level -- no staircase, no reversals. Every parameter of this design is a field on `ExperimentConfig` (see `config.py`), loaded from a YAML/TOML file; nothing about the design is hard-coded.
 
-A 2D grid design: bar width and reference height are independently varied across four levels each. A separate height-JND staircase runs for every width x height configuration, producing 16 threshold estimates.
+- `levels = linspace(-delta_max_pct, +delta_max_pct, n_levels)`, dropping the 0% level unless `include_zero_level` is set.
+- `comparison_height_mm = base_height_mm * (1 + level)`.
+- `trials_per_level` reps per level, plus `catch_trial_pct` extra easy (±`delta_max_pct`) trials as a lapse/attention check.
+- Reference/comparison side (left/right) is counterbalanced within each level.
+- All trials for a configuration are shuffled into one sequence using a seeded RNG; the seed actually used is always logged, even when `rng_seed` is left unset (a fresh one is drawn and recorded).
 
-### Bar Design: Separated (Non-Adjacent) Bars
+Both bars are rendered simultaneously on a split screen. Bar interior = signal ON, exterior = OFF.
 
-Bars are rendered as discrete, non-adjacent stimuli. Adjacent bars were rejected because they introduce a dual-task interference problem: the participant must simultaneously perform boundary segmentation (where does one bar end and another begin?) and magnitude judgment (which bar is taller?). This conflation makes threshold measurement ambiguous — a variant of the classical two-point discrimination problem (Holmes & Tamè, 2023). Separated bars isolate the height discrimination task.
+### Pilot mode
 
-### Paradigm
-
-2AFC (two-alternative forced choice): on each trial, the participant explores two bars sequentially and indicates which is taller. One bar is the reference (fixed height = current height level), the other is the test bar (reference height + dH). Target placement is randomized.
-
-### Width and Height Levels
-
-Four fixed width levels and four fixed reference-height levels:
-
-```
-2, 6, 10, 14 mm
-```
-
-A separate staircase runs for each width x reference-height pair.
-
-### Height Staircase
-
-At each width x reference-height configuration, a 1-up/2-down adaptive staircase measures height JND.
-
-| Parameter | Value | Rationale |
-|-----------|-------|-----------|
-| Reference height | Current height level | Independent from bar width |
-| dH start | 200% of reference height | Well above threshold; ensures initial correct responses |
-| dH minimum | 50% of reference height | Lower bound on test range |
-| dH step size | 10% of reference height | Fine enough resolution for reliable threshold estimate |
-| Stopping criterion | 12 reversals | Sun et al. (2023) |
-| Threshold estimate | Mean of last 8 reversals | Sun et al. (2023) |
-
-The 1-up/2-down rule converges on the ~70.7% correct point on the psychometric function.
+`mode: staircase_pilot` runs the original 1-up/2-down adaptive staircase (`staircase.py`) at one base height, to locate the approximate JND before committing to a `delta_max_pct` range for constant stimuli. At the end it prints the pilot JND and warns if it exceeds `delta_max_pct / 1.5` (range likely too narrow).
 
 ## Rendering Method
 
@@ -61,13 +34,13 @@ Bar width is rendered using a **software-based timing method** rather than posit
 duration = bar_width / finger_speed
 ```
 
-A high-resolution timer (`time.perf_counter()`) controls signal delivery independently of the IR frame rate. This bypasses the sampling bottleneck: at ~100 Hz with 10 cm/s finger speed, classical position-based rendering cannot reliably deliver bars narrower than ~2–3 mm. The timing method removes this constraint, shifting the rendering bottleneck to the signal generator's timing resolution.
+A high-resolution timer (`time.perf_counter()`) controls signal delivery independently of the IR frame rate. This bypasses the sampling bottleneck: at ~100 Hz with 10 cm/s finger speed, classical position-based rendering cannot reliably deliver bars narrower than ~2-3 mm. Per trial, each bar crossing ("pass") is logged separately with its commanded duration, actual on-duration, entry finger speed, and whether the leading edge was cleanly detected (used to separate perceptual failures from rendering failures during analysis).
 
 ## Display and Frame Calibration
 
 The IR frame presents as a virtual mouse mapped to the whole desktop, not just the app window, so the experiment normally runs fullscreen (window space = screen space = IR space).
 
-The haptic surface and IR frame geometry are fixed in config and never measured at runtime:
+The haptic surface and IR frame geometry are fixed rig constants and never measured at runtime (`config.py`, not part of `ExperimentConfig` since the supervisor doesn't vary them per session):
 
 ```
 IR_FRAME_WIDTH_MM = 249.0
@@ -80,65 +53,67 @@ HAPTIC_SURFACE_LEFT_PADDING_MM = 23.0
 HAPTIC_SURFACE_TOP_PADDING_MM = 16.0
 ```
 
-There is no calibration step or flag. On every run, the app maps millimeters through the configured IR-frame size and 1920 x 1080 screen mapping, then places the active haptic surface using the configured left/top padding. Inside that active area:
-
-```
-px_per_mm_x = 1920 / 249
-px_per_mm_y = 1080 / 187
-active left px = 23 * px_per_mm_x
-active top px = 16 * px_per_mm_y
-bar width px = bar width mm * px_per_mm_x
-bar height px = bar height mm * px_per_mm_y
-```
-
-Bar widths use the X scale, bar heights use the Y scale, and finger speed converts pixel motion back to millimeters using the same two scale factors.
-
-## Variables
-
-| Variable | Role | Notes |
-|----------|------|-------|
-| Bar width | Independent (fixed per staircase) | 4 levels: 2, 6, 10, 14 mm |
-| Reference height | Independent (fixed per staircase) | 4 levels: 2, 6, 10, 14 mm |
-| dH | Staircase variable | Converges to JND threshold |
-| Finger speed | Covariate (recorded, not controlled) | To be revisited after hardware timing resolution is confirmed |
-
 ## Repository Structure
 
 ```
 experiment/
-├── main.py          # Entry point; orchestrates experiment flow
-├── config.py        # All parameters and constants
-├── staircase.py     # Staircase algorithm (no pygame dependency)
-├── stimulus.py      # Bar rendering and signal control
-├── trial.py         # Single trial logic
-├── display.py       # Pygame UI and screen layout
-├── data_logger.py   # Result recording (CSV)
-└── data/            # Output directory
+├── main.py              # Entry point; mode dispatch (constant_stimuli / staircase_pilot / --dry-run)
+├── config.py            # Rig constants + ExperimentConfig (the single design-parameter source)
+├── constant_stimuli.py  # Level generation + trial scheduling (no pygame dependency)
+├── staircase.py         # Staircase algorithm for pilot mode (no pygame dependency)
+├── stimulus.py          # Bar rendering and signal control
+├── trial.py             # Single trial logic, per-pass fidelity logging
+├── display.py           # Pygame UI and screen layout
+├── data_logger.py       # CSV/JSON logging
+├── configs/             # Example YAML configs (default.yaml, pilot.yaml)
+└── data/                # Output directory
+
+analysis/
+└── fit_psychometric.py  # Psychometric-function fitting (psignifit preferred, scipy MLE fallback),
+                          # plotting, ideal-observer simulation. No pygame dependency; runs standalone
+                          # on saved CSVs.
+
+tests/                   # pytest: level generation, scheduling, psychometric-fit recovery
 ```
 
-## Configuration (`config.py`)
+## Configuration (`ExperimentConfig`, loaded from YAML)
 
-```python
-# Hardware
-CARRIER_FREQUENCY = 125       # Hz
-PEAK_VOLTAGE = 4              # V
+```yaml
+base_height_mm: 10.0
+bar_width_mm: 10.0
+inter_bar_gap_mm: 40.0   # >= 3.0 mm (BANA 3.4.3.13; Tang & Beebe 1998)
 
-# Stimulus levels (mm)
-WIDTH_LEVELS = [2, 6, 10, 14]
-HEIGHT_LEVELS = [2, 6, 10, 14]
+delta_max_pct: 0.30
+n_levels: 6
+include_zero_level: false
+trials_per_level: 10
+catch_trial_pct: 0.10
 
-# Height staircase
-DH_START = 2.0                # 200% of reference height
-DH_MIN = 0.5                  # 50% of reference height
-DH_STEP = 0.1                 # 10% step size
+feedback: false
+n_practice_trials: 8
+break_every_n_trials: 30
 
-# Stopping criterion (Sun et al., 2023)
-N_REVERSALS = 12
-N_REVERSALS_AVERAGED = 8
+rng_seed: null           # null -> random, but the resolved seed is always logged
+participant_id: ""
+mode: constant_stimuli   # or staircase_pilot
+```
+
+Run with:
+
+```
+python -m experiment.main --config experiment/configs/default.yaml --participant P01
+python -m experiment.main --config experiment/configs/pilot.yaml --participant P01   # pilot mode
+python -m experiment.main --config experiment/configs/default.yaml --dry-run         # ideal-observer sanity check, no pygame/hardware
+```
+
+Fit a saved session:
+
+```
+python -m analysis.fit_psychometric experiment/data/P01_*_trials.csv --out fit.png
 ```
 
 ## Key References
 
 - Sun et al. (2023). Investigating the minimum perceived linewidth of electroadhesion devices. *Displays*, 76, 102342.
 - Holmes & Tamè (2023). Two-point discrimination. *(methodology rationale for separated bar design)*
-- Tang & Beebe (1998). *(inter-bar spacing baseline: 5.8 mm edge-to-edge minimum)*
+- Tang & Beebe (1998). *(inter-bar spacing baseline)*
