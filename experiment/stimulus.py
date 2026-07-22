@@ -60,37 +60,58 @@ def _write_output(instrument: Any, enabled: bool, *, force: bool = False) -> Non
         _output_enabled = enabled
 
 
-def connect_hardware(cfg: ExperimentConfig, address: str = VISA_ADDRESS) -> Any | None:
+def connect_hardware(
+    cfg: ExperimentConfig,
+    address: str = VISA_ADDRESS,
+    *,
+    max_attempts: int = 6,
+    retry_delay_s: float = 1.0,
+) -> Any | None:
     """Open and configure the VISA signal generator using ``cfg``'s carrier/voltage.
+
+    The VXI-11 handshake to this instrument is flaky over LAN and often needs
+    a few tries before it succeeds, so the connection attempt is retried up
+    to ``max_attempts`` times before giving up.
 
     Returns ``None`` when PyVISA or the instrument is unavailable so demo mode
     can run without hardware.
     """
     global _voltage_peak
+    _voltage_peak = cfg.voltage_peak
+
     try:
         import pyvisa
-
-        _reset_cached_state()
-        _voltage_peak = cfg.voltage_peak
-        rm = pyvisa.ResourceManager()
-        instrument = rm.open_resource(address)
-        instrument.write_termination = "\n"
-        instrument.read_termination = "\n"
-        instrument.write("*RST")
-        instrument.write("VOLT:UNIT VPP")
-        instrument.write("OUTP:LOAD INF")
-        instrument.write(f"VOLT:OFFS {OFFSET_V}")
-        _write_waveform(instrument, WAVE_SQUARE, force=True)
-        instrument.write("FUNC:SQU:DCYC 50")
-        _write_frequency(instrument, cfg.carrier_freq_hz, force=True)
-        _write_voltage(instrument, MIN_VOLTAGE, force=True)
-        _write_output(instrument, not DISABLE_OUTPUT_WHEN_OFF, force=True)
-        print(f"Connected to signal generator: {instrument.query('*IDN?').strip()}")
-        return instrument
-    except Exception as exc:
+    except ModuleNotFoundError as exc:
         print(f"Hardware unavailable ({exc}). Running without electroadhesion output.")
-        _voltage_peak = cfg.voltage_peak
         return None
+
+    rm = pyvisa.ResourceManager()
+    last_exc: Exception | None = None
+    for attempt in range(1, max_attempts + 1):
+        try:
+            _reset_cached_state()
+            instrument = rm.open_resource(address)
+            instrument.write_termination = "\n"
+            instrument.read_termination = "\n"
+            instrument.write("*RST")
+            instrument.write("VOLT:UNIT VPP")
+            instrument.write("OUTP:LOAD INF")
+            instrument.write(f"VOLT:OFFS {OFFSET_V}")
+            _write_waveform(instrument, WAVE_SQUARE, force=True)
+            instrument.write("FUNC:SQU:DCYC 50")
+            _write_frequency(instrument, cfg.carrier_freq_hz, force=True)
+            _write_voltage(instrument, MIN_VOLTAGE, force=True)
+            _write_output(instrument, not DISABLE_OUTPUT_WHEN_OFF, force=True)
+            print(f"Connected to signal generator: {instrument.query('*IDN?').strip()}")
+            return instrument
+        except Exception as exc:
+            last_exc = exc
+            print(f"Connection attempt {attempt}/{max_attempts} failed ({exc}); retrying...")
+            if attempt < max_attempts:
+                time.sleep(retry_delay_s)
+
+    print(f"Hardware unavailable ({last_exc}). Running without electroadhesion output.")
+    return None
 
 
 def signal_on(instrument: Any | None) -> None:

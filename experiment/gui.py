@@ -209,7 +209,20 @@ class LauncherApp:
         ).grid(row=1, column=0, sticky="w")
 
         self.status_var = tk.StringVar(value="")
-        ttk.Label(bottom, textvariable=self.status_var, style="Status.TLabel").pack(fill="x", pady=(0, 6))
+        ttk.Label(bottom, textvariable=self.status_var, style="Status.TLabel").pack(fill="x", pady=(0, 2))
+
+        self.hardware_status_var = tk.StringVar(value="")
+        ttk.Label(bottom, textvariable=self.hardware_status_var, style="Status.TLabel").pack(fill="x", pady=(0, 6))
+
+        console_frame = ttk.LabelFrame(bottom, text="Konsol Çıktısı (son oturum)", padding=6)
+        console_frame.pack(fill="x", pady=(0, 6))
+        self.console_text = tk.Text(
+            console_frame, height=6, wrap="word", font=("TkFixedFont", 9), state="disabled"
+        )
+        console_scroll = ttk.Scrollbar(console_frame, orient="vertical", command=self.console_text.yview)
+        self.console_text.configure(yscrollcommand=console_scroll.set)
+        self.console_text.pack(side="left", fill="both", expand=True)
+        console_scroll.pack(side="right", fill="y")
 
         plot_frame = ttk.LabelFrame(bottom, text="Son Oturum: Psychometric Eğri", padding=10)
         plot_frame.pack(fill="x", pady=(0, 6))
