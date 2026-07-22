@@ -6,6 +6,7 @@ __pycache__/
 
 # Virtual Environments
 venv/
+venv.old-py39/
 env/
 .venv/
 .env/
@@ -34,3 +35,7 @@ $RECYCLE.BIN/
 # --- Logs and Databases ---
 *.log
 *.sqlite3
+
+# --- Experiment GUI local state ---
+experiment/configs/.last_used.yaml
+experiment/data

@@ -135,8 +135,7 @@ def _fit_scipy_mle(levels: list[float], n_trials: list[int], n_taller: list[int]
 
 def _fit_psignifit(levels: list[float], n_trials: list[int], n_taller: list[int]) -> tuple[float, float, float]:
     data = np.array([levels, n_taller, n_trials]).T
-    options = {"sigmoidName": "norm", "expType": "YesNo"}
-    result = psignifit.psignifit(data, options)
+    result = psignifit.psignifit(data, sigmoid="norm", experiment_type="yes/no")
     pse = float(result.parameter_estimate["threshold"])
     sigma = float(result.parameter_estimate["width"]) / (norm.ppf(0.95) - norm.ppf(0.05)) if _HAVE_SCIPY else float(result.parameter_estimate["width"]) / 3.29
     lapse = float(result.parameter_estimate["lambda"])

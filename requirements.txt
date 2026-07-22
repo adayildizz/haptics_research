@@ -14,5 +14,8 @@ scipy>=1.10
 matplotlib>=3.7
 psignifit>=4.0; python_version >= "3.8"
 
+# --- Supervisor GUI (experiment/gui.py) ---
+pillow>=9.0
+
 # --- Tests ---
 pytest>=7.0

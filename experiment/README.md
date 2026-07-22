@@ -112,6 +112,22 @@ Fit a saved session:
 python -m analysis.fit_psychometric experiment/data/P01_*_trials.csv --out fit.png
 ```
 
+### Supervisor launcher (GUI)
+
+`experiment/gui.py` is a small Tkinter control panel for the supervisor, so
+repeat sessions don't require re-typing config values or CLI flags by hand:
+
+```
+python -m experiment.gui
+```
+
+It opens pre-filled with the previously used configuration
+(`experiment/configs/.last_used.yaml`, not versioned), so most sessions only
+need the participant ID changed before pressing **Apply**. Apply writes the
+form values out, hides the panel, and launches the participant-facing pygame
+screen (`experiment.main`) as a subprocess; the panel reappears automatically
+once that session ends.
+
 ## Key References
 
 - Sun et al. (2023). Investigating the minimum perceived linewidth of electroadhesion devices. *Displays*, 76, 102342.
