@@ -178,7 +178,7 @@ def run_trial(
             trial_index=trial_index,
             is_practice=spec.is_practice,
             active_side=active_side,
-            show_touch_guide=cfg.show_touch_guide,
+            blind_test_mode=cfg.blind_test_mode,
         )
         pygame.display.flip()
         previous_side = active_side

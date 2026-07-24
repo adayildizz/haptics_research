@@ -24,7 +24,6 @@ HAPTIC_BORDER: Color = (245, 166, 35)
 FEEDBACK_CORRECT: Color = (72, 187, 120)
 FEEDBACK_INCORRECT: Color = (220, 90, 90)
 TOUCH_GUIDE_BG: Color = (0, 0, 0)
-TOUCH_GUIDE_STRIPE: Color = (255, 255, 255)
 
 
 @dataclass(frozen=True)
@@ -102,18 +101,16 @@ def draw_trial(
     trial_index: int,
     is_practice: bool,
     active_side: str | None = None,
-    show_touch_guide: bool = False,
+    blind_test_mode: bool = False,
 ) -> None:
     width, height = screen.get_size()
 
-    if show_touch_guide:
-        # High-contrast touch guide: black everywhere except two full-height
-        # white stripes marking exactly the touchable columns (same x-position
-        # and width as the bars themselves), with the bars drawn on top.
+    if blind_test_mode:
+        # No visual cue at all about where the bars/columns are -- the tester
+        # must find and compare them purely by touch, same as a non-visual
+        # participant would. Only the overall touchable-area boundary and the
+        # task text are shown; the bars themselves are never drawn.
         screen.fill(TOUCH_GUIDE_BG)
-        for bar in (layout.left_bar, layout.right_bar):
-            stripe = pygame.Rect(bar.left, layout.haptic_area.top, bar.width, layout.haptic_area.height)
-            pygame.draw.rect(screen, TOUCH_GUIDE_STRIPE, stripe)
     else:
         screen.fill(BACKGROUND)
         left_panel = pygame.Rect(0, 84, width // 2, height - 164)
@@ -135,10 +132,11 @@ def draw_trial(
 
     pygame.draw.rect(screen, HAPTIC_BORDER, layout.haptic_area, 3)
 
-    pygame.draw.rect(screen, BAR_COMPARISON if layout.left_is_comparison else BAR_REF, layout.left_bar)
-    pygame.draw.rect(screen, BAR_COMPARISON if not layout.left_is_comparison else BAR_REF, layout.right_bar)
-    pygame.draw.rect(screen, BAR_OUTLINE, layout.left_bar, 2)
-    pygame.draw.rect(screen, BAR_OUTLINE, layout.right_bar, 2)
+    if not blind_test_mode:
+        pygame.draw.rect(screen, BAR_COMPARISON if layout.left_is_comparison else BAR_REF, layout.left_bar)
+        pygame.draw.rect(screen, BAR_COMPARISON if not layout.left_is_comparison else BAR_REF, layout.right_bar)
+        pygame.draw.rect(screen, BAR_OUTLINE, layout.left_bar, 2)
+        pygame.draw.rect(screen, BAR_OUTLINE, layout.right_bar, 2)
 
     left_label = label_font.render("LEFT", True, TEXT)
     right_label = label_font.render("RIGHT", True, TEXT)

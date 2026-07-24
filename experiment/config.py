@@ -75,7 +75,7 @@ class ExperimentConfig:
     break_every_n_trials: int = 30
 
     # Display
-    show_touch_guide: bool = False  # full-height white touch-column stripes behind the bars
+    blind_test_mode: bool = False  # hide the bars/columns entirely; find them by touch only
 
     # Rendering / hardware
     carrier_freq_hz: float = 125.0
