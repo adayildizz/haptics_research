@@ -162,9 +162,14 @@ def run_trial(
             tracker.finish(now)
 
         if active_side is not None:
-            stimulus.deliver_timed_signal(instrument, tracker.start_s, tracker.commanded_s, now)
+            # Finger is physically over the bar right now: keep the signal on
+            # regardless of the timed pulse, so dwelling doesn't cut it off early.
+            stimulus.signal_on(instrument)
         else:
-            stimulus.signal_off(instrument)
+            # Finger just left the bar's rectangle: honor any still-running timed
+            # pulse from the entry speed, so fast/narrow crossings the position
+            # sampling might otherwise clip still get their full guaranteed duration.
+            stimulus.deliver_timed_signal(instrument, tracker.start_s, tracker.commanded_s, now)
 
         display.draw_trial(
             screen,
