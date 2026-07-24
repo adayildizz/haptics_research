@@ -100,9 +100,10 @@ FIELD_HELP: dict[str, str] = {
     "depoda spesifik bir referansa bağlı değil.",
     "include_zero_level": "0% (referansla birebir aynı) seviyeyi de dahil et. Varsayılan kapalı: "
     "0 farkta 'doğru' cevap tanımsız (şans düzeyinde) olduğundan genelde dışarıda bırakılır.",
-    "trials_per_level": "Her seviyede yapılacak deneme sayısı. Varsayılan 10: fit_psychometric.py'nin "
-    "tercih ettiği psignifit (Bayesci) yöntemi, kendi belgelemesine göre saniyede ~10 deneme/seviye "
-    "ile bile makul güven aralıkları verebiliyor.",
+    "trials_per_level": "Her seviyede yapılacak deneme sayısı. Varsayılan 10 -- eğri fit'i "
+    "(analysis/fit_psychometric.py) varsayılan olarak scipy MLE kullanıyor; bu yöntem az sayıda "
+    "denemede daha savrulabilir olduğundan seviye başına en az birkaç, ideal olarak ~10 civarı "
+    "deneme önerilir.",
     "catch_trial_pct": "En uç seviyelerde (±delta_max_pct) eklenen ekstra 'kolay' kontrol denemesi "
     "oranı; katılımcının dikkatini/lapse oranını ölçmek içindir. Standart bir dikkat kontrolü "
     "pratiğidir, belirli bir referansa dayanmıyor.",

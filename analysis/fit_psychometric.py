@@ -148,12 +148,14 @@ def fit_psychometric(
     n_comparison_taller: list[int],
     jnd_lower_pct: float = 0.25,
     jnd_upper_pct: float = 0.75,
-    prefer_psignifit: bool = True,
+    prefer_psignifit: bool = False,
 ) -> PsychometricFit:
     """Fit a cumulative-Gaussian-with-lapse psychometric function.
 
-    Prefers psignifit (Bayesian, gives credible intervals -- valuable at only
-    ~10 trials/level) when installed; falls back to a scipy MLE fit.
+    Defaults to a scipy MLE fit (point estimate only, no credible intervals).
+    Pass ``prefer_psignifit=True`` to use psignifit instead (Bayesian, gives
+    credible intervals -- valuable at only ~10 trials/level -- but also warns
+    on small per-level trial counts, which is noisy during quick testing).
     """
     if prefer_psignifit and _HAVE_PSIGNIFIT:
         pse, sigma, lapse = _fit_psignifit(levels, n_trials, n_comparison_taller)
@@ -275,7 +277,9 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--out", type=Path, default=Path("psychometric_fit.png"))
     parser.add_argument("--jnd-lower-pct", type=float, default=0.25)
     parser.add_argument("--jnd-upper-pct", type=float, default=0.75)
-    parser.add_argument("--no-psignifit", action="store_true")
+    parser.add_argument(
+        "--psignifit", action="store_true", help="Use psignifit (Bayesian) instead of the default scipy MLE fit."
+    )
     return parser.parse_args()
 
 
@@ -288,7 +292,7 @@ def main() -> int:
         n_taller,
         jnd_lower_pct=args.jnd_lower_pct,
         jnd_upper_pct=args.jnd_upper_pct,
-        prefer_psignifit=not args.no_psignifit,
+        prefer_psignifit=args.psignifit,
     )
     plot_psychometric(fit, args.out)
     print(f"backend={fit.backend} pse={fit.pse:.4f} slope_sigma={fit.slope_sigma:.4f} "
