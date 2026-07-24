@@ -112,10 +112,10 @@ FIELD_HELP: dict[str, str] = {
     "deneme sayısı. Mühendislik tercihi, belirli bir referansa bağlı değil.",
     "break_every_n_trials": "Kaç denemede bir zorunlu mola verileceği; yorgunluk ve dikkat kaybını "
     "azaltmak içindir. Belirli bir referansa bağlı değil.",
-    "blind_test_mode": "Görsel çubuklar/sütunlar ekranda hiç gösterilmez -- sadece dokunulabilir "
-    "alanın genel sınırı ve görev metni görünür. Amaç: görsel-olmayan bir katılımcının deneyimini "
-    "sighted bir test kullanıcısının da yaşayabilmesi, yani doğru cevabı sadece dokunarak/hissederek "
-    "bulmak. Dokunma algılama ve sinyal mantığını etkilemez, sadece görsel ipucunu kaldırır.",
+    "blind_test_mode": "Dokunulacak iki sütun tam ekran yüksekliğinde beyaz şeritlerle işaretlenir "
+    "(konumlarını bulmak kör bir arama olmasın diye), ama şeritlerin içindeki gerçek yükseklik "
+    "çubukları hiç çizilmez -- yükseklik test edilen şey olduğu için ekrandan okunamamalı, sadece "
+    "dokunarak/hissederek karşılaştırılmalı. Dokunma algılama ve sinyal mantığını etkilemez.",
     "carrier_freq_hz": "Elektroadhezyon sinyalinin taşıyıcı frekansı. Bu bir tasarım parametresi değil, "
     "rig'in donanım özelliği -- README'deki donanım tablosunda '125 Hz carrier frequency' olarak "
     "belirtiliyor.",

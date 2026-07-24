@@ -24,6 +24,7 @@ HAPTIC_BORDER: Color = (245, 166, 35)
 FEEDBACK_CORRECT: Color = (72, 187, 120)
 FEEDBACK_INCORRECT: Color = (220, 90, 90)
 TOUCH_GUIDE_BG: Color = (0, 0, 0)
+TOUCH_GUIDE_STRIPE: Color = (255, 255, 255)
 
 
 @dataclass(frozen=True)
@@ -106,11 +107,14 @@ def draw_trial(
     width, height = screen.get_size()
 
     if blind_test_mode:
-        # No visual cue at all about where the bars/columns are -- the tester
-        # must find and compare them purely by touch, same as a non-visual
-        # participant would. Only the overall touchable-area boundary and the
-        # task text are shown; the bars themselves are never drawn.
+        # The touchable columns are shown as full-height white stripes (so
+        # finding them isn't a blind fumble), but the height bars themselves
+        # are never drawn -- height is the thing being tested, so it must be
+        # judged by touch alone, not read off the screen.
         screen.fill(TOUCH_GUIDE_BG)
+        for bar in (layout.left_bar, layout.right_bar):
+            stripe = pygame.Rect(bar.left, layout.haptic_area.top, bar.width, layout.haptic_area.height)
+            pygame.draw.rect(screen, TOUCH_GUIDE_STRIPE, stripe)
     else:
         screen.fill(BACKGROUND)
         left_panel = pygame.Rect(0, 84, width // 2, height - 164)
