@@ -23,6 +23,7 @@ MUTED: Color = (172, 180, 192)
 HAPTIC_BORDER: Color = (245, 166, 35)
 FEEDBACK_CORRECT: Color = (72, 187, 120)
 FEEDBACK_INCORRECT: Color = (220, 90, 90)
+TOUCH_POINT: Color = (255, 0, 0)
 TOUCH_GUIDE_BG: Color = (0, 0, 0)
 TOUCH_GUIDE_STRIPE: Color = (255, 255, 255)
 
@@ -71,8 +72,7 @@ def make_trial_layout(
     reference_px = max(1, round(reference_height_mm * calibration.px_per_mm_y))
     comparison_px = max(1, round(comparison_height_mm * calibration.px_per_mm_y))
     haptic_area = active_rect(calibration)
-    baseline_margin = max(8, round(0.08 * haptic_area.height))
-    baseline_y = haptic_area.bottom - baseline_margin
+    baseline_y = haptic_area.bottom
 
     center_x = haptic_area.left + haptic_area.width // 2
     left_center_x = center_x - gap_px // 2 - width_px // 2
@@ -103,6 +103,7 @@ def draw_trial(
     is_practice: bool,
     active_side: str | None = None,
     blind_test_mode: bool = False,
+    touch_pos: tuple[int, int] | None = None,
 ) -> None:
     width, height = screen.get_size()
 
@@ -149,6 +150,9 @@ def draw_trial(
 
     hint = body_font.render("Explore both sides, then answer. ESC exits safely.", True, MUTED)
     screen.blit(hint, hint.get_rect(center=(width // 2, height - 34)))
+
+    if touch_pos is not None:
+        pygame.draw.circle(screen, TOUCH_POINT, touch_pos, 10)
 
 
 def draw_feedback(screen: pygame.Surface, correct: bool) -> None:
