@@ -53,6 +53,7 @@ FIELD_GROUPS: list[tuple[str, list[tuple[str, str, str]]]] = [
         ("feedback", "Geri bildirim ver", "bool"),
         ("n_practice_trials", "Alıştırma deneme sayısı", "int"),
         ("break_every_n_trials", "Kaç denemede bir mola", "int"),
+        ("show_touch_guide", "Dokunma şeridi göster", "bool"),
     ]),
     ("Donanım / İşleme", [
         ("carrier_freq_hz", "Taşıyıcı frekans (Hz)", "float"),
@@ -111,6 +112,10 @@ FIELD_HELP: dict[str, str] = {
     "deneme sayısı. Mühendislik tercihi, belirli bir referansa bağlı değil.",
     "break_every_n_trials": "Kaç denemede bir zorunlu mola verileceği; yorgunluk ve dikkat kaybını "
     "azaltmak içindir. Belirli bir referansa bağlı değil.",
+    "show_touch_guide": "Görsel bir yardım modu: arkaplan siyah olur, dokunulması gereken iki sütun "
+    "tam ekran yüksekliğinde beyaz şeritlerle işaretlenir (şerit genişliği = çubuk genişliği), gerçek "
+    "yükseklik çubukları bu şeritlerin içinde çizilir. Dokunma algılama ve sinyal mantığını etkilemez, "
+    "sadece nereye dokunulacağını görsel olarak netleştirir.",
     "carrier_freq_hz": "Elektroadhezyon sinyalinin taşıyıcı frekansı. Bu bir tasarım parametresi değil, "
     "rig'in donanım özelliği -- README'deki donanım tablosunda '125 Hz carrier frequency' olarak "
     "belirtiliyor.",

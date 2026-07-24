@@ -74,6 +74,9 @@ class ExperimentConfig:
     n_practice_trials: int = 8
     break_every_n_trials: int = 30
 
+    # Display
+    show_touch_guide: bool = False  # full-height white touch-column stripes behind the bars
+
     # Rendering / hardware
     carrier_freq_hz: float = 125.0
     voltage_peak: float = 4.0

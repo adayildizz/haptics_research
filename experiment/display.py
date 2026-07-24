@@ -23,6 +23,8 @@ MUTED: Color = (172, 180, 192)
 HAPTIC_BORDER: Color = (245, 166, 35)
 FEEDBACK_CORRECT: Color = (72, 187, 120)
 FEEDBACK_INCORRECT: Color = (220, 90, 90)
+TOUCH_GUIDE_BG: Color = (0, 0, 0)
+TOUCH_GUIDE_STRIPE: Color = (255, 255, 255)
 
 
 @dataclass(frozen=True)
@@ -100,14 +102,25 @@ def draw_trial(
     trial_index: int,
     is_practice: bool,
     active_side: str | None = None,
+    show_touch_guide: bool = False,
 ) -> None:
-    screen.fill(BACKGROUND)
     width, height = screen.get_size()
-    left_panel = pygame.Rect(0, 84, width // 2, height - 164)
-    right_panel = pygame.Rect(width // 2, 84, width // 2, height - 164)
-    pygame.draw.rect(screen, PANEL_ACTIVE if active_side == "left" else PANEL, left_panel)
-    pygame.draw.rect(screen, PANEL_ACTIVE if active_side == "right" else PANEL, right_panel)
-    pygame.draw.line(screen, DIVIDER, (width // 2, 72), (width // 2, height - 60), 2)
+
+    if show_touch_guide:
+        # High-contrast touch guide: black everywhere except two full-height
+        # white stripes marking exactly the touchable columns (same x-position
+        # and width as the bars themselves), with the bars drawn on top.
+        screen.fill(TOUCH_GUIDE_BG)
+        for bar in (layout.left_bar, layout.right_bar):
+            stripe = pygame.Rect(bar.left, layout.haptic_area.top, bar.width, layout.haptic_area.height)
+            pygame.draw.rect(screen, TOUCH_GUIDE_STRIPE, stripe)
+    else:
+        screen.fill(BACKGROUND)
+        left_panel = pygame.Rect(0, 84, width // 2, height - 164)
+        right_panel = pygame.Rect(width // 2, 84, width // 2, height - 164)
+        pygame.draw.rect(screen, PANEL_ACTIVE if active_side == "left" else PANEL, left_panel)
+        pygame.draw.rect(screen, PANEL_ACTIVE if active_side == "right" else PANEL, right_panel)
+        pygame.draw.line(screen, DIVIDER, (width // 2, 72), (width // 2, height - 60), 2)
 
     title_font = pygame.font.SysFont("Arial", 30, bold=True)
     label_font = pygame.font.SysFont("Arial", 24, bold=True)
