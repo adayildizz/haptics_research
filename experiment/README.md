@@ -36,22 +36,45 @@ duration = bar_width / finger_speed
 
 A high-resolution timer (`time.perf_counter()`) controls signal delivery independently of the IR frame rate. This bypasses the sampling bottleneck: at ~100 Hz with 10 cm/s finger speed, classical position-based rendering cannot reliably deliver bars narrower than ~2-3 mm. Per trial, each bar crossing ("pass") is logged separately with its commanded duration, actual on-duration, entry finger speed, and whether the leading edge was cleanly detected (used to separate perceptual failures from rendering failures during analysis).
 
-## Display and Frame Calibration
+## Procedure
 
-The IR frame presents as a virtual mouse mapped to the whole desktop, not just the app window, so the experiment normally runs fullscreen (window space = screen space = IR space).
+Each session runs as a single participant-facing fullscreen flow, advanced with
+the **spacebar** and abortable at any point with **Escape** (or closing the
+window). The task is two-alternative forced choice (2AFC): two bars are shown
+side-by-side and the participant decides which is **taller**.
 
-The haptic surface and IR frame geometry are fixed rig constants and never measured at runtime (`config.py`, not part of `ExperimentConfig` since the supervisor doesn't vary them per session):
+1. **Start screen.** The session opens on a "Ready to begin" prompt showing the
+   mode and the base height/width for this configuration. Press **space** to begin.
+2. **Practice block** (skipped if `n_practice_trials == 0`). A short run of easy
+   trials at the extreme levels (±`delta_max_pct`) with **feedback forced on**,
+   so the participant learns the response mapping before real data is collected.
+3. **Main block.** The full shuffled constant-stimuli sequence (levels + catch
+   trials, interleaved). **Feedback is off** here unless `feedback: true` is set.
+4. **Breaks.** Every `break_every_n_trials` trials the screen pauses on a break
+   prompt showing progress; the participant resumes with **space**.
+5. **End screen.** A "Session complete" message confirms data was saved.
 
-```
-IR_FRAME_WIDTH_MM = 249.0
-IR_FRAME_HEIGHT_MM = 187.0
-IR_FRAME_SCREEN_WIDTH_PX = 1920
-IR_FRAME_SCREEN_HEIGHT_PX = 1080
-HAPTIC_SURFACE_WIDTH_MM = 194.0
-HAPTIC_SURFACE_HEIGHT_MM = 145.0
-HAPTIC_SURFACE_LEFT_PADDING_MM = 23.0
-HAPTIC_SURFACE_TOP_PADDING_MM = 16.0
-```
+Within a single trial the participant slides a finger across the touch surface to
+explore the two bars. The electroadhesion signal is delivered over the **bar
+interior only** (interior = ON, exterior = OFF), so each bar is felt as a raised
+region whose width is governed by the timing method above. When ready, the
+participant responds with the arrow keys:
+
+- **← (Left arrow)** — the left bar felt taller.
+- **→ (Right arrow)** — the right bar felt taller.
+
+Trials are **unspeeded** (there is no exposure or response deadline; participants
+may re-explore freely), and response time is logged per trial for reference. Which
+side holds the reference vs. the comparison is counterbalanced within each level,
+and a response is scored correct when it matches the objectively taller side.
+
+### Blind test variant
+
+Setting `blind_test_mode: true` hides the bars visually so they can be located
+**by touch alone** — no on-screen rectangles, only the haptic signal and a touch
+cursor. This enforces the study's premise of height discrimination *without*
+visual information, and is the condition of interest for non-visual data access;
+leave it `false` for sighted-guided piloting and rig checks.
 
 ## Repository Structure
 
@@ -92,6 +115,8 @@ catch_trial_pct: 0.10
 feedback: false
 n_practice_trials: 8
 break_every_n_trials: 30
+
+blind_test_mode: false   # true -> hide bars, locate them by touch only (no visual)
 
 rng_seed: null           # null -> random, but the resolved seed is always logged
 participant_id: ""
