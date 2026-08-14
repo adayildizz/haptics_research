@@ -24,7 +24,9 @@ def test_demo_trace_loads_attempts_in_chronological_order(tmp_path):
         "answered",
         "answered",
     ]
+    assert [attempt.response for attempt in session.attempts] == ["left", None, "right", "left"]
     assert all(attempt.samples for attempt in session.attempts)
+    assert [attempt.correct for attempt in session.attempts] == [True, None, False, True]
 
 
 def test_replay_interpolates_cursor_but_keeps_previous_signal_state(tmp_path):
@@ -62,3 +64,19 @@ def test_replay_frame_renders_without_opening_a_pygame_window(tmp_path):
 
     rgb = pygame.image.tostring(surface, "RGB")
     assert len(rgb) == 640 * 400 * 3
+
+
+def test_replay_prefers_recorded_correct_value(tmp_path):
+    session = load_trace(ensure_demo_trace(tmp_path / "demo_replay_trace.sqlite3"))
+    attempt = session.attempts[0]
+    response_event = attempt.events[-1]
+    forced_event = type(response_event)(
+        t_us=response_event.t_us,
+        event_type="response",
+        payload={"response": attempt.response, "correct": False},
+    )
+    forced_attempt = type(attempt)(
+        **{**attempt.__dict__, "events": (*attempt.events, forced_event)}
+    )
+
+    assert forced_attempt.correct is False

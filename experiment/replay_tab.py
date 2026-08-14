@@ -21,6 +21,7 @@ class ReplayTab(ttk.Frame):
     """Browse recorded sessions and replay attempts without a second window."""
 
     FRAME_INTERVAL_MS = 33
+    AUTO_NEXT_DELAY_MS = 500
     MIN_RENDER_SIZE = (480, 300)
 
     def __init__(self, notebook: ttk.Notebook, data_dir: Path) -> None:
@@ -41,6 +42,7 @@ class ReplayTab(ttk.Frame):
         self._play_started_at = 0.0
         self._play_started_us = 0.0
         self._tick_job: str | None = None
+        self._advance_job: str | None = None
         self._render_job: str | None = None
         self._photo: ImageTk.PhotoImage | None = None
         self._pygame: Any = None
@@ -114,17 +116,22 @@ class ReplayTab(ttk.Frame):
         attempt_frame.columnconfigure(0, weight=1)
         self.attempt_tree = ttk.Treeview(
             attempt_frame,
-            columns=("attempt", "outcome", "duration"),
+            columns=("attempt", "outcome", "result", "duration"),
             show="headings",
             selectmode="browse",
             height=10,
         )
         self.attempt_tree.heading("attempt", text="Trial / Try")
         self.attempt_tree.heading("outcome", text="Outcome")
+        self.attempt_tree.heading("result", text="Result")
         self.attempt_tree.heading("duration", text="Time")
-        self.attempt_tree.column("attempt", width=100, minwidth=85, anchor="center")
-        self.attempt_tree.column("outcome", width=95, minwidth=75, anchor="center")
-        self.attempt_tree.column("duration", width=60, minwidth=50, anchor="e")
+        self.attempt_tree.column("attempt", width=82, minwidth=72, anchor="center")
+        self.attempt_tree.column("outcome", width=72, minwidth=65, anchor="center")
+        self.attempt_tree.column("result", width=78, minwidth=68, anchor="center")
+        self.attempt_tree.column("duration", width=54, minwidth=48, anchor="e")
+        self.attempt_tree.tag_configure("correct", foreground="#218739")
+        self.attempt_tree.tag_configure("incorrect", foreground="#b3261e")
+        self.attempt_tree.tag_configure("timeout", foreground="#a56100")
         attempt_scroll = ttk.Scrollbar(attempt_frame, orient="vertical", command=self.attempt_tree.yview)
         self.attempt_tree.configure(yscrollcommand=attempt_scroll.set)
         self.attempt_tree.grid(row=0, column=0, sticky="nsew")
@@ -154,13 +161,17 @@ class ReplayTab(ttk.Frame):
 
         controls = ttk.Frame(player, padding=(0, 8, 0, 0))
         controls.grid(row=2, column=0, sticky="ew")
-        controls.columnconfigure(2, weight=1)
+        controls.columnconfigure(3, weight=1)
         self.play_button = ttk.Button(controls, text="Play", command=self.toggle_play, state="disabled", width=9)
         self.play_button.grid(row=0, column=0, padx=(0, 6))
         self.restart_button = ttk.Button(
             controls, text="Restart", command=self.restart, state="disabled", width=9
         )
         self.restart_button.grid(row=0, column=1, padx=(0, 10))
+        self.auto_next_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(controls, text="Auto-next", variable=self.auto_next_var).grid(
+            row=0, column=2, padx=(0, 10)
+        )
         self.timeline_var = tk.DoubleVar(value=0.0)
         self.timeline = ttk.Scale(
             controls,
@@ -170,9 +181,9 @@ class ReplayTab(ttk.Frame):
             command=self._on_timeline_changed,
             state="disabled",
         )
-        self.timeline.grid(row=0, column=2, sticky="ew")
+        self.timeline.grid(row=0, column=3, sticky="ew")
         self.time_var = tk.StringVar(value="00.00 / 00.00 s")
-        ttk.Label(controls, textvariable=self.time_var, width=17, anchor="e").grid(row=0, column=3, padx=(10, 0))
+        ttk.Label(controls, textvariable=self.time_var, width=17, anchor="e").grid(row=0, column=4, padx=(10, 0))
 
     def activate(self) -> None:
         """Enable the tab and lazily discover recordings."""
@@ -188,6 +199,7 @@ class ReplayTab(ttk.Frame):
         self._active = False
         self._pause()
         self._cancel_job("_tick_job")
+        self._cancel_job("_advance_job")
         self._cancel_job("_render_job")
 
     def close(self) -> None:
@@ -300,6 +312,16 @@ class ReplayTab(ttk.Frame):
             f"Participant {session.participant_id} • {len(session.attempts)} attempt(s)"
         )
         for index, attempt in enumerate(session.attempts):
+            response_text = attempt.response.capitalize() if attempt.response is not None else "—"
+            if attempt.correct is True:
+                result_text = f"✓ {response_text}"
+                row_tag = "correct"
+            elif attempt.correct is False:
+                result_text = f"✗ {response_text}"
+                row_tag = "incorrect"
+            else:
+                result_text = "—"
+                row_tag = attempt.outcome or ""
             self.attempt_tree.insert(
                 "",
                 "end",
@@ -307,8 +329,10 @@ class ReplayTab(ttk.Frame):
                 values=(
                     f"{attempt.trial_index} / {attempt.attempt_index}",
                     attempt.outcome or "open",
+                    result_text,
                     f"{attempt.duration_us / 1_000_000:.1f}s",
                 ),
+                tags=(row_tag,),
             )
         if session.attempts:
             self.attempt_tree.selection_set("0")
@@ -329,6 +353,7 @@ class ReplayTab(ttk.Frame):
             return
         if self._attempt_index == index:
             return
+        self._cancel_job("_advance_job")
         self._pause()
         self._attempt_index = index
         self._playback_us = 0.0
@@ -345,6 +370,7 @@ class ReplayTab(ttk.Frame):
         self._queue_render()
 
     def toggle_play(self) -> None:
+        self._cancel_job("_advance_job")
         attempt = self.attempt
         if attempt is None:
             return
@@ -362,6 +388,7 @@ class ReplayTab(ttk.Frame):
         self._schedule_tick()
 
     def restart(self) -> None:
+        self._cancel_job("_advance_job")
         self._pause()
         self._playback_us = 0.0
         self._set_timeline(0.0)
@@ -391,7 +418,30 @@ class ReplayTab(ttk.Frame):
             self.play_button.configure(text="Play")
         self._set_timeline(self._playback_us / 1_000_000)
         self._render()
+        if self._playback_us >= attempt.duration_us and self._has_next_attempt() and self.auto_next_var.get():
+            self._advance_job = self.after(self.AUTO_NEXT_DELAY_MS, self._advance_to_next)
+            return
         self._schedule_tick()
+
+    def _has_next_attempt(self) -> bool:
+        return (
+            self._session is not None
+            and self._attempt_index is not None
+            and self._attempt_index + 1 < len(self._session.attempts)
+        )
+
+    def _advance_to_next(self) -> None:
+        self._advance_job = None
+        if not self._active or not self.auto_next_var.get() or not self._has_next_attempt():
+            return
+        assert self._attempt_index is not None
+        next_index = self._attempt_index + 1
+        item_id = str(next_index)
+        self.attempt_tree.selection_set(item_id)
+        self.attempt_tree.focus(item_id)
+        self.attempt_tree.see(item_id)
+        self._select_attempt(next_index)
+        self.toggle_play()
 
     def _update_playback_clock(self) -> None:
         attempt = self.attempt

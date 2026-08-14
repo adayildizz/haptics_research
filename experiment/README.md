@@ -194,6 +194,10 @@ chronological order. Selecting an attempt opens Play/Pause, Restart, and
 timeline controls and renders the replay directly inside the launcher window;
 it does not create a separate Pygame window. Replay modules are loaded only
 when that tab is opened and playback is stopped before an experiment starts.
+Answered attempts show the selected side (Left or Right), prefixed by a check
+mark for a correct response or a cross for an incorrect response. With
+Auto-next enabled, the player waits briefly at the end of an attempt and then
+continues with the next attempt in chronological order.
 
 ## Key References
 

@@ -74,6 +74,24 @@ class ReplayAttempt:
             candidates.append(max(0, self.ended_us - self.started_us))
         return max(candidates, default=0)
 
+    @property
+    def correct(self) -> bool | None:
+        """Return the recorded result, or reconstruct it for older traces."""
+        if self.outcome != "answered" or self.response is None:
+            return None
+        for event in reversed(self.events):
+            if event.event_type != "response" or "correct" not in event.payload:
+                continue
+            recorded = event.payload["correct"]
+            if isinstance(recorded, bool):
+                return recorded
+            if isinstance(recorded, int) and recorded in (0, 1):
+                return bool(recorded)
+
+        comparison_side = "right" if self.reference_side == "left" else "left"
+        taller_side = comparison_side if self.level_pct > 0 else self.reference_side
+        return self.response == taller_side
+
     def state_at(self, t_us: int) -> ReplayFrameState | None:
         """Interpolate cursor position; retain the previous discrete signal state."""
         if not self.samples:
