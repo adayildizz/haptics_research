@@ -48,6 +48,8 @@ side-by-side and the participant decides which is **taller**.
 2. **Practice block** (skipped if `n_practice_trials == 0`). A short run of easy
    trials at the extreme levels (±`delta_max_pct`) with **feedback forced on**,
    so the participant learns the response mapping before real data is collected.
+   Optional spoken speed coaching says “Faster,” “Good speed,” or “Slower” after
+   a stable speed reading. This coaching is disabled throughout the main block.
 3. **Main block.** The full shuffled constant-stimuli sequence (levels + catch
    trials, interleaved). **Feedback is off** here unless `feedback: true` is set.
 4. **Breaks.** Every `break_every_n_trials` trials the screen pauses on a break
@@ -121,6 +123,9 @@ feedback: false
 n_practice_trials: 8
 break_every_n_trials: 30
 response_timeout_s: 30.0
+practice_voice_feedback: true
+ideal_finger_speed_mm_s: 100.0
+ideal_speed_tolerance_pct: 0.30
 
 blind_test_mode: false   # true -> hide bars, locate them by touch only (no visual)
 

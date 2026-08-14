@@ -7,6 +7,7 @@ import time
 from array import array
 from dataclasses import dataclass, field
 from typing import Any
+from typing import TYPE_CHECKING
 
 import pygame
 
@@ -14,6 +15,9 @@ from . import display, stimulus
 from .calibration import DisplayCalibration
 from .config import ExperimentConfig
 from .constant_stimuli import TrialSpec
+
+if TYPE_CHECKING:
+    from .speed_coach import PracticeSpeedCoach
 
 
 @dataclass(frozen=True)
@@ -136,6 +140,7 @@ def run_trial(
     spec: TrialSpec,
     trial_index: int,
     fps: int,
+    speed_coach: PracticeSpeedCoach | None = None,
 ) -> TrialResult | TrialTimeout | None:
     """Run one 2AFC trial, returning a response, timeout, or ``None`` on quit."""
     comparison_side = "right" if spec.reference_side == "left" else "left"
@@ -154,6 +159,9 @@ def run_trial(
     last_pos = pygame.mouse.get_pos()
     last_time = trial_start
     previous_side: str | None = None
+
+    if speed_coach is not None and spec.is_practice:
+        speed_coach.reset_trial()
 
     tracker = _PassTracker(max_sample_gap_s=3.0 / cfg.ir_sample_hz_nominal)
 
@@ -205,6 +213,14 @@ def run_trial(
         dx = (pos[0] - last_pos[0]) / calibration.px_per_mm_x
         dy = (pos[1] - last_pos[1]) / calibration.px_per_mm_y
         speed_mm_s = ((dx * dx + dy * dy) ** 0.5) / elapsed
+
+        if speed_coach is not None and spec.is_practice:
+            speed_coach.update(
+                speed_mm_s,
+                elapsed,
+                now,
+                in_active_area=layout.haptic_area.collidepoint(pos),
+            )
 
         active_side = _side_for_pos(pos, layout)
         if active_side is not None and active_side != previous_side:

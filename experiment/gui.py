@@ -54,6 +54,9 @@ FIELD_GROUPS: list[tuple[str, list[tuple[str, str, str]]]] = [
         ("n_practice_trials", "Alıştırma deneme sayısı", "int"),
         ("break_every_n_trials", "Kaç denemede bir mola", "int"),
         ("response_timeout_s", "Yanıt süresi (saniye)", "float"),
+        ("practice_voice_feedback", "Alıştırmada sesli hız yönlendirmesi", "bool"),
+        ("ideal_finger_speed_mm_s", "İdeal parmak hızı (mm/s)", "float"),
+        ("ideal_speed_tolerance_pct", "İdeal hız toleransı (oran)", "float"),
         ("blind_test_mode", "Kör test modu (çubukları gösterme)", "bool"),
     ]),
     ("Donanım / İşleme", [
@@ -117,6 +120,12 @@ FIELD_HELP: dict[str, str] = {
     "response_timeout_s": "Ana blokta her yanıt için tanınan süre. Süre dolunca uyarı sesi çalar; "
     "yanıtlanmayan deneme sayılmadan bekleyen bar çiftleri yeniden karıştırılır. Alıştırma "
     "denemelerinde süre sınırı uygulanmaz.",
+    "practice_voice_feedback": "Yalnızca alıştırma denemelerinde Faster, Good speed ve Slower "
+    "sesli yönlendirmelerini açar. Ana deney bloğunda hiçbir hız sesi çalmaz.",
+    "ideal_finger_speed_mm_s": "Alıştırmadaki sesli yönlendirmenin hedef parmak hızı. Varsayılan "
+    "100 mm/s, yani 10 cm/s'dir.",
+    "ideal_speed_tolerance_pct": "Hızın doğru sayılacağı hedef çevresindeki tolerans oranı. "
+    "0.30 değeri, 100 mm/s hedef için 70-130 mm/s aralığı üretir.",
     "blind_test_mode": "Dokunulacak iki sütun tam ekran yüksekliğinde beyaz şeritlerle işaretlenir "
     "(konumlarını bulmak kör bir arama olmasın diye), ama şeritlerin içindeki gerçek yükseklik "
     "çubukları hiç çizilmez -- yükseklik test edilen şey olduğu için ekrandan okunamamalı, sadece "

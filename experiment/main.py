@@ -161,12 +161,40 @@ def run_constant_stimuli(
     rng = random.Random(seed)
 
     if cfg.n_practice_trials > 0:
-        if not wait_for_space_or_escape(screen, "Practice trials (feedback on)."):
-            return
-        for i, spec in enumerate(constant_stimuli.build_practice_sequence(cfg, rng), start=1):
-            result = trial_module.run_trial(screen, clock, calibration, instrument, cfg, spec, i, fps=60)
-            if result is None:
+        from .speed_coach import PRACTICE_INSTRUCTION, PracticeSpeedCoach, SystemVoice
+
+        voice = SystemVoice() if cfg.practice_voice_feedback else None
+        speed_coach = (
+            PracticeSpeedCoach(
+                cfg.ideal_finger_speed_mm_s,
+                cfg.ideal_speed_tolerance_pct,
+                voice.speak,
+            )
+            if voice is not None and voice.available
+            else None
+        )
+        try:
+            if not wait_for_space_or_escape(screen, "Practice trials (feedback on)."):
                 return
+            if voice is not None and voice.available:
+                voice.speak(PRACTICE_INSTRUCTION, wait=True)
+            for i, spec in enumerate(constant_stimuli.build_practice_sequence(cfg, rng), start=1):
+                result = trial_module.run_trial(
+                    screen,
+                    clock,
+                    calibration,
+                    instrument,
+                    cfg,
+                    spec,
+                    i,
+                    fps=60,
+                    speed_coach=speed_coach,
+                )
+                if result is None:
+                    return
+        finally:
+            if voice is not None:
+                voice.close()
 
     if not wait_for_space_or_escape(screen, "Main block. No feedback unless configured."):
         return

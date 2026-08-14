@@ -74,6 +74,9 @@ class ExperimentConfig:
     n_practice_trials: int = 8
     break_every_n_trials: int = 30
     response_timeout_s: float = 30.0
+    practice_voice_feedback: bool = True
+    ideal_finger_speed_mm_s: float = 100.0
+    ideal_speed_tolerance_pct: float = 0.30
 
     # Display
     blind_test_mode: bool = False  # hide the bars/columns entirely; find them by touch only
@@ -106,6 +109,10 @@ class ExperimentConfig:
             raise ValueError("trials_per_level must be >= 1")
         if self.response_timeout_s <= 0:
             raise ValueError("response_timeout_s must be > 0")
+        if self.ideal_finger_speed_mm_s <= 0:
+            raise ValueError("ideal_finger_speed_mm_s must be > 0")
+        if not 0 <= self.ideal_speed_tolerance_pct < 1:
+            raise ValueError("ideal_speed_tolerance_pct must be >= 0 and < 1")
         if self.mode not in ("constant_stimuli", "staircase_pilot"):
             raise ValueError(f"unknown mode: {self.mode!r}")
 
