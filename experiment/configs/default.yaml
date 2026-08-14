@@ -20,6 +20,7 @@ response_timeout_s: 30.0
 practice_voice_feedback: true
 ideal_finger_speed_mm_s: 100.0  # 10 cm/s
 ideal_speed_tolerance_pct: 0.30 # accepted band: 70-130 mm/s
+record_main_trace: true
 
 carrier_freq_hz: 125.0
 voltage_peak: 4.0

@@ -77,6 +77,7 @@ class ExperimentConfig:
     practice_voice_feedback: bool = True
     ideal_finger_speed_mm_s: float = 100.0
     ideal_speed_tolerance_pct: float = 0.30
+    record_main_trace: bool = True
 
     # Display
     blind_test_mode: bool = False  # hide the bars/columns entirely; find them by touch only

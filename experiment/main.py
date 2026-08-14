@@ -16,13 +16,19 @@ from __future__ import annotations
 import argparse
 import sys
 import time
+from dataclasses import asdict
+from datetime import datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from . import calibration as calibration_module
 from . import constant_stimuli, data_logger
-from .config import ExperimentConfig, load_experiment_config, write_config_snapshot
+from .config import ExperimentConfig, config_to_dict, load_experiment_config, write_config_snapshot
 from .constant_stimuli import TrialSpec, resolve_seed
 from .staircase import StairCase, pilot_range_check
+
+if TYPE_CHECKING:
+    from .trace_recorder import AsyncTraceRecorder
 
 
 def parse_args() -> argparse.Namespace:
@@ -151,6 +157,7 @@ def run_constant_stimuli(
     session_id: str,
     trial_path: Path,
     seed: int,
+    trace_recorder: AsyncTraceRecorder | None = None,
 ) -> None:
     from . import trial as trial_module
 
@@ -202,11 +209,42 @@ def run_constant_stimuli(
     pending_trials = constant_stimuli.build_trial_sequence(cfg, seed)
     total_trials = len(pending_trials)
     completed_trials = 0
+    attempt_counts: dict[int, int] = {}
     while pending_trials:
         spec = pending_trials.pop(0)
         trial_index = completed_trials + 1
+        attempt_index = attempt_counts.get(trial_index, 0) + 1
+        attempt_counts[trial_index] = attempt_index
+        trace_attempt = None
+        if trace_recorder is not None:
+            from .trace_store import AttemptDefinition
+
+            attempt_key = f"{trial_index}:{attempt_index}"
+            trace_attempt = trace_recorder.start_attempt(
+                attempt_key,
+                AttemptDefinition(
+                    session_id=session_id,
+                    trial_index=trial_index,
+                    attempt_index=attempt_index,
+                    started_us=trace_recorder.elapsed_us(),
+                    level_pct=spec.level_pct,
+                    comparison_height_mm=spec.comparison_height_mm,
+                    reference_height_mm=spec.reference_height_mm,
+                    bar_width_mm=cfg.bar_width_mm,
+                    reference_side=spec.reference_side,
+                    is_catch=spec.is_catch,
+                ),
+            )
         result = trial_module.run_trial(
-            screen, clock, calibration, instrument, cfg, spec, trial_index, fps=60
+            screen,
+            clock,
+            calibration,
+            instrument,
+            cfg,
+            spec,
+            trial_index,
+            fps=60,
+            trace_attempt=trace_attempt,
         )
         if result is None:
             return
@@ -279,6 +317,24 @@ def run() -> int:
     resolved_seed = resolve_seed(cfg)
     write_config_snapshot(cfg, config_snapshot_path, extra={"session_id": session_id, "resolved_rng_seed": resolved_seed})
 
+    trace_recorder = None
+    trace_path = trial_path.parent / f"{session_id}_trace.sqlite3"
+    if cfg.mode == "constant_stimuli" and cfg.record_main_trace:
+        from .trace_recorder import AsyncTraceRecorder
+
+        trace_recorder = AsyncTraceRecorder(trace_path)
+        trace_config = config_to_dict(cfg)
+        trace_config["resolved_rng_seed"] = resolved_seed
+        trace_recorder.create_session(
+            session_id=session_id,
+            participant_id=participant,
+            started_at=datetime.now().astimezone().isoformat(),
+            config=trace_config,
+            calibration=asdict(current_calibration),
+            app_version="ea-demo-trace-v1",
+        )
+        print(f"Main-trial trace enabled: {trace_path}")
+
     instrument = stimulus.connect_hardware(cfg)
 
     try:
@@ -292,7 +348,15 @@ def run() -> int:
             run_staircase_pilot(screen, clock, current_calibration, instrument, cfg, summary_path, resolved_seed)
         else:
             run_constant_stimuli(
-                screen, clock, current_calibration, instrument, cfg, session_id, trial_path, resolved_seed
+                screen,
+                clock,
+                current_calibration,
+                instrument,
+                cfg,
+                session_id,
+                trial_path,
+                resolved_seed,
+                trace_recorder=trace_recorder,
             )
 
         display.draw_break(screen, f"Session complete. Data saved in {trial_path.parent.name}/")
@@ -302,6 +366,12 @@ def run() -> int:
     finally:
         stimulus.close_hardware(instrument)
         pygame.quit()
+        if trace_recorder is not None:
+            trace_error = trace_recorder.close()
+            if trace_error is None:
+                print(f"Trace saved: {trace_path}")
+            else:
+                print(f"WARNING: Trace recording failed ({trace_error})")
 
 
 if __name__ == "__main__":

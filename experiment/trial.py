@@ -15,9 +15,11 @@ from . import display, stimulus
 from .calibration import DisplayCalibration
 from .config import ExperimentConfig
 from .constant_stimuli import TrialSpec
+from .trace_store import CursorSample
 
 if TYPE_CHECKING:
     from .speed_coach import PracticeSpeedCoach
+    from .trace_recorder import AttemptTraceBuffer
 
 
 @dataclass(frozen=True)
@@ -141,6 +143,7 @@ def run_trial(
     trial_index: int,
     fps: int,
     speed_coach: PracticeSpeedCoach | None = None,
+    trace_attempt: AttemptTraceBuffer | None = None,
 ) -> TrialResult | TrialTimeout | None:
     """Run one 2AFC trial, returning a response, timeout, or ``None`` on quit."""
     comparison_side = "right" if spec.reference_side == "left" else "left"
@@ -159,6 +162,8 @@ def run_trial(
     last_pos = pygame.mouse.get_pos()
     last_time = trial_start
     previous_side: str | None = None
+    previous_signal_on = False
+    trace_sequence = 0
 
     if speed_coach is not None and spec.is_practice:
         speed_coach.reset_trial()
@@ -170,10 +175,36 @@ def run_trial(
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 stimulus.signal_off(instrument)
+                if trace_attempt is not None:
+                    t_us = round((now - trial_start) * 1_000_000)
+                    if previous_signal_on:
+                        trace_attempt.add_event(
+                            t_us=t_us,
+                            event_type="signal_off",
+                            payload={"reason": "window_closed"},
+                        )
+                    trace_attempt.add_event(t_us=t_us, event_type="aborted", payload={"reason": "window_closed"})
+                    trace_attempt.finish(
+                        ended_us=trace_attempt.session_elapsed_us(),
+                        outcome="aborted",
+                    )
                 return None
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     stimulus.signal_off(instrument)
+                    if trace_attempt is not None:
+                        t_us = round((now - trial_start) * 1_000_000)
+                        if previous_signal_on:
+                            trace_attempt.add_event(
+                                t_us=t_us,
+                                event_type="signal_off",
+                                payload={"reason": "escape"},
+                            )
+                        trace_attempt.add_event(t_us=t_us, event_type="aborted", payload={"reason": "escape"})
+                        trace_attempt.finish(
+                            ended_us=trace_attempt.session_elapsed_us(),
+                            outcome="aborted",
+                        )
                     return None
                 if event.key in (pygame.K_LEFT, pygame.K_RIGHT):
                     response = "left" if event.key == pygame.K_LEFT else "right"
@@ -195,6 +226,25 @@ def run_trial(
                         passes=tracker.passes,
                         timestamp=time.strftime("%Y-%m-%dT%H:%M:%S"),
                     )
+                    if trace_attempt is not None:
+                        t_us = round((now - trial_start) * 1_000_000)
+                        if previous_signal_on:
+                            trace_attempt.add_event(
+                                t_us=t_us,
+                                event_type="signal_off",
+                                payload={"reason": "response"},
+                            )
+                        trace_attempt.add_event(
+                            t_us=t_us,
+                            event_type="response",
+                            payload={"response": response, "correct": correct},
+                        )
+                        trace_attempt.finish(
+                            ended_us=trace_attempt.session_elapsed_us(),
+                            outcome="answered",
+                            response=response,
+                            response_time_us=t_us,
+                        )
                     if cfg.feedback or spec.is_practice:
                         display.draw_feedback(screen, correct)
                         pygame.display.flip()
@@ -206,6 +256,23 @@ def run_trial(
             stimulus.signal_off(instrument)
             tracker.finish(now)
             _play_timeout_beep()
+            if trace_attempt is not None:
+                t_us = round(elapsed_trial_s * 1_000_000)
+                if previous_signal_on:
+                    trace_attempt.add_event(
+                        t_us=t_us,
+                        event_type="signal_off",
+                        payload={"reason": "timeout"},
+                    )
+                trace_attempt.add_event(
+                    t_us=t_us,
+                    event_type="timeout",
+                    payload={"limit_s": cfg.response_timeout_s},
+                )
+                trace_attempt.finish(
+                    ended_us=trace_attempt.session_elapsed_us(),
+                    outcome="timeout",
+                )
             return TrialTimeout(elapsed_s=elapsed_trial_s)
 
         pos = pygame.mouse.get_pos()
@@ -233,11 +300,43 @@ def run_trial(
             # Finger is physically over the bar right now: keep the signal on
             # regardless of the timed pulse, so dwelling doesn't cut it off early.
             stimulus.signal_on(instrument)
+            signal_on = True
         else:
             # Finger just left the bar's rectangle: honor any still-running timed
             # pulse from the entry speed, so fast/narrow crossings the position
             # sampling might otherwise clip still get their full guaranteed duration.
-            stimulus.deliver_timed_signal(instrument, tracker.start_s, tracker.commanded_s, now)
+            signal_on = stimulus.deliver_timed_signal(
+                instrument,
+                tracker.start_s,
+                tracker.commanded_s,
+                now,
+            )
+
+        if trace_attempt is not None:
+            t_us = round(elapsed_trial_s * 1_000_000)
+            trace_attempt.add_sample(
+                CursorSample(
+                    sequence=trace_sequence,
+                    t_us=t_us,
+                    frame_dt_us=round(elapsed * 1_000_000),
+                    x_px=pos[0],
+                    y_px=pos[1],
+                    x_mm=(pos[0] - calibration.active_left_px) / calibration.px_per_mm_x,
+                    y_mm=(pos[1] - calibration.active_top_px) / calibration.px_per_mm_y,
+                    speed_mm_s=speed_mm_s,
+                    in_active_area=layout.haptic_area.collidepoint(pos),
+                    active_side=active_side,
+                    signal_on=signal_on,
+                )
+            )
+            trace_sequence += 1
+            if signal_on != previous_signal_on:
+                trace_attempt.add_event(
+                    t_us=t_us,
+                    event_type="signal_on" if signal_on else "signal_off",
+                    payload={"active_side": active_side},
+                )
+        previous_signal_on = signal_on
 
         display.draw_trial(
             screen,

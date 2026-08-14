@@ -126,6 +126,7 @@ response_timeout_s: 30.0
 practice_voice_feedback: true
 ideal_finger_speed_mm_s: 100.0
 ideal_speed_tolerance_pct: 0.30
+record_main_trace: true
 
 blind_test_mode: false   # true -> hide bars, locate them by touch only (no visual)
 
@@ -148,6 +149,30 @@ Fit a saved session:
 python -m analysis.fit_psychometric experiment/data/P01_*_trials.csv --out fit.png
 ```
 
+### Main-trial movement trace
+
+With `record_main_trace: true`, each constant-stimuli session also creates
+`experiment/data/<session_id>_trace.sqlite3`. It records every main-block
+attempt, including attempts that end in timeout or abort. Practice trials and
+staircase-pilot sessions are not recorded. Cursor samples are accumulated in
+small in-memory batches and SQLite writes run on a dedicated worker thread, so
+the real-time trial loop never performs disk I/O. The trace is intended for the
+offline replay and video-export tools; those tools do not run during an
+experiment.
+
+Open the interactive replay browser with:
+
+```bash
+python -m experiment.replay
+```
+
+The left panel lists trace databases and their attempts in chronological order.
+Select an attempt, then use **Play/Pause**, **Restart**, or the clickable timeline.
+The left/right arrow keys seek by one second and Space toggles playback. A
+deterministic `demo_replay_trace.sqlite3` recording is created automatically so
+the browser can be evaluated before real participant traces are available. Pass
+`--no-demo` to hide that recording.
+
 ### Supervisor launcher (GUI)
 
 `experiment/gui.py` is a small Tkinter control panel for the supervisor, so
@@ -163,6 +188,12 @@ need the participant ID changed before pressing **Apply**. Apply writes the
 form values out, hides the panel, and launches the participant-facing pygame
 screen (`experiment.main`) as a subprocess; the panel reappears automatically
 once that session ends.
+
+The **Past Recordings** tab lists saved trace databases and their attempts in
+chronological order. Selecting an attempt opens Play/Pause, Restart, and
+timeline controls and renders the replay directly inside the launcher window;
+it does not create a separate Pygame window. Replay modules are loaded only
+when that tab is opened and playback is stopped before an experiment starts.
 
 ## Key References
 

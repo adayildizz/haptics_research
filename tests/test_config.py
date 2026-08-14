@@ -14,6 +14,7 @@ def test_load_default_yaml_config():
     assert cfg.practice_voice_feedback is True
     assert cfg.ideal_finger_speed_mm_s == 100.0
     assert cfg.ideal_speed_tolerance_pct == 0.30
+    assert cfg.record_main_trace is True
     assert cfg.mode == "constant_stimuli"
 
 

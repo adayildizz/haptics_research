@@ -24,6 +24,7 @@ import yaml
 from PIL import Image, ImageTk
 
 from .config import ExperimentConfig, config_to_dict, load_experiment_config
+from .replay_tab import ReplayTab
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 CONFIGS_DIR = Path(__file__).resolve().parent / "configs"
@@ -57,6 +58,7 @@ FIELD_GROUPS: list[tuple[str, list[tuple[str, str, str]]]] = [
         ("practice_voice_feedback", "Alıştırmada sesli hız yönlendirmesi", "bool"),
         ("ideal_finger_speed_mm_s", "İdeal parmak hızı (mm/s)", "float"),
         ("ideal_speed_tolerance_pct", "İdeal hız toleransı (oran)", "float"),
+        ("record_main_trace", "Ana deney hareket kaydı", "bool"),
         ("blind_test_mode", "Kör test modu (çubukları gösterme)", "bool"),
     ]),
     ("Donanım / İşleme", [
@@ -126,6 +128,8 @@ FIELD_HELP: dict[str, str] = {
     "100 mm/s, yani 10 cm/s'dir.",
     "ideal_speed_tolerance_pct": "Hızın doğru sayılacağı hedef çevresindeki tolerans oranı. "
     "0.30 değeri, 100 mm/s hedef için 70-130 mm/s aralığı üretir.",
+    "record_main_trace": "Ana deneyde cursor hareketlerini ayrı bir SQLite trace dosyasına kaydeder. "
+    "Practice ve staircase kayıt edilmez; veritabanı yazımı ayrı worker thread'de yapılır.",
     "blind_test_mode": "Dokunulacak iki sütun tam ekran yüksekliğinde beyaz şeritlerle işaretlenir "
     "(konumlarını bulmak kör bir arama olmasın diye), ama şeritlerin içindeki gerçek yükseklik "
     "çubukları hiç çizilmez -- yükseklik test edilen şey olduğu için ekrandan okunamamalı, sadece "
@@ -192,6 +196,8 @@ class LauncherApp:
         self._launch_dry_run = False
         self._tab_canvases: dict[str, tk.Canvas] = {}
         self._current_canvas: tk.Canvas | None = None
+        self._normal_geometry: str | None = None
+        self._replay_visible = False
 
         root.rowconfigure(1, weight=1)
         root.columnconfigure(0, weight=1)
@@ -200,23 +206,24 @@ class LauncherApp:
             row=0, column=0, sticky="w", padx=16, pady=(16, 4)
         )
 
-        notebook = ttk.Notebook(root)
-        notebook.grid(row=1, column=0, sticky="nsew", padx=16, pady=(0, 8))
+        self.notebook = ttk.Notebook(root)
+        self.notebook.grid(row=1, column=0, sticky="nsew", padx=16, pady=(0, 8))
 
         for group_title, group_fields in FIELD_GROUPS:
-            tab_content = self._build_scrollable_tab(notebook, group_title)
+            tab_content = self._build_scrollable_tab(self.notebook, group_title)
             for i, (attr, label, kind) in enumerate(group_fields):
                 self._build_field(tab_content, i, attr, label, kind)
 
-        notebook.bind("<<NotebookTabChanged>>", self._on_tab_changed)
+        self.replay_tab = ReplayTab(self.notebook, DATA_DIR)
+        self.notebook.bind("<<NotebookTabChanged>>", self._on_tab_changed)
         self.root.bind_all("<MouseWheel>", self._on_mousewheel)
-        if notebook.tabs():
-            self._current_canvas = self._tab_canvases.get(notebook.tabs()[0])
+        if self.notebook.tabs():
+            self._current_canvas = self._tab_canvases.get(self.notebook.tabs()[0])
 
-        bottom = ttk.Frame(root, padding=(16, 0, 16, 16))
-        bottom.grid(row=2, column=0, sticky="ew")
+        self.bottom = ttk.Frame(root, padding=(16, 0, 16, 16))
+        self.bottom.grid(row=2, column=0, sticky="ew")
 
-        run_frame = ttk.LabelFrame(bottom, text="Çalıştırma Seçenekleri", padding=10)
+        run_frame = ttk.LabelFrame(self.bottom, text="Çalıştırma Seçenekleri", padding=10)
         run_frame.pack(fill="x", pady=(0, 6))
         self.windowed_var = tk.BooleanVar(value=False)
         self.dry_run_var = tk.BooleanVar(value=False)
@@ -228,12 +235,14 @@ class LauncherApp:
         ).grid(row=1, column=0, sticky="w")
 
         self.status_var = tk.StringVar(value="")
-        ttk.Label(bottom, textvariable=self.status_var, style="Status.TLabel").pack(fill="x", pady=(0, 2))
+        ttk.Label(self.bottom, textvariable=self.status_var, style="Status.TLabel").pack(fill="x", pady=(0, 2))
 
         self.hardware_status_var = tk.StringVar(value="")
-        ttk.Label(bottom, textvariable=self.hardware_status_var, style="Status.TLabel").pack(fill="x", pady=(0, 6))
+        ttk.Label(self.bottom, textvariable=self.hardware_status_var, style="Status.TLabel").pack(
+            fill="x", pady=(0, 6)
+        )
 
-        console_frame = ttk.LabelFrame(bottom, text="Konsol Çıktısı (son oturum)", padding=6)
+        console_frame = ttk.LabelFrame(self.bottom, text="Konsol Çıktısı (son oturum)", padding=6)
         console_frame.pack(fill="x", pady=(0, 6))
         self.console_text = tk.Text(
             console_frame, height=6, wrap="word", font=("TkFixedFont", 9), state="disabled"
@@ -243,20 +252,21 @@ class LauncherApp:
         self.console_text.pack(side="left", fill="both", expand=True)
         console_scroll.pack(side="right", fill="y")
 
-        plot_frame = ttk.LabelFrame(bottom, text="Son Oturum: Psychometric Eğri", padding=10)
+        plot_frame = ttk.LabelFrame(self.bottom, text="Son Oturum: Psychometric Eğri", padding=10)
         plot_frame.pack(fill="x", pady=(0, 6))
         self.plot_label = ttk.Label(
             plot_frame, text="Henüz bir oturum çalıştırılmadı.", anchor="center", justify="center"
         )
         self.plot_label.pack(fill="both", expand=True)
 
-        button_row = ttk.Frame(bottom)
+        button_row = ttk.Frame(self.bottom)
         button_row.pack(fill="x")
         ttk.Button(button_row, text="Varsayılana Sıfırla", command=self._reset_to_default).pack(side="left")
         self.apply_button = ttk.Button(button_row, text="Apply", style="Apply.TButton", command=self._on_apply)
         self.apply_button.pack(side="right")
 
         self._populate(_load_initial_config())
+        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 
     def _build_scrollable_tab(self, notebook: ttk.Notebook, title: str) -> ttk.Frame:
         outer = ttk.Frame(notebook)
@@ -287,7 +297,25 @@ class LauncherApp:
 
     def _on_tab_changed(self, event: tk.Event) -> None:
         notebook = event.widget
-        self._current_canvas = self._tab_canvases.get(notebook.select())
+        selected = notebook.select()
+        self._current_canvas = self._tab_canvases.get(selected)
+        replay_selected = selected == str(self.replay_tab)
+        if replay_selected and not self._replay_visible:
+            self._replay_visible = True
+            self._normal_geometry = self.root.geometry()
+            self.bottom.grid_remove()
+            self.root.update_idletasks()
+            width = max(1180, self.root.winfo_width())
+            height = max(760, self.root.winfo_height())
+            self.root.geometry(f"{width}x{height}")
+            self.replay_tab.activate()
+        elif not replay_selected and self._replay_visible:
+            self._replay_visible = False
+            self.replay_tab.deactivate()
+            self.bottom.grid()
+            if self._normal_geometry is not None:
+                self.root.geometry(self._normal_geometry)
+                self._normal_geometry = None
 
     def _on_mousewheel(self, event: tk.Event) -> None:
         canvas = self._current_canvas
@@ -351,6 +379,7 @@ class LauncherApp:
         return ExperimentConfig(**kwargs)
 
     def _on_apply(self) -> None:
+        self.replay_tab.deactivate()
         try:
             cfg = self._collect_config()
         except (ValueError, TypeError) as exc:
@@ -390,6 +419,10 @@ class LauncherApp:
         self.plot_label.configure(image="", text="Oturum çalışıyor...")
         self.root.withdraw()
         threading.Thread(target=self._wait_for_process, daemon=True).start()
+
+    def _on_close(self) -> None:
+        self.replay_tab.close()
+        self.root.destroy()
 
     def _wait_for_process(self) -> None:
         assert self.process is not None
