@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 import pygame
@@ -46,6 +47,11 @@ def active_rect(calibration: DisplayCalibration) -> pygame.Rect:
         calibration.active_width_px,
         calibration.active_height_px,
     )
+
+
+def countdown_seconds(remaining_time_s: float) -> int:
+    """Round remaining time up so the counter starts at the full limit."""
+    return max(0, math.ceil(remaining_time_s))
 
 
 def init_window(
@@ -104,6 +110,7 @@ def draw_trial(
     active_side: str | None = None,
     blind_test_mode: bool = False,
     touch_pos: tuple[int, int] | None = None,
+    remaining_time_s: float | None = None,
 ) -> None:
     width, height = screen.get_size()
 
@@ -130,6 +137,12 @@ def draw_trial(
 
     title = title_font.render("Which bar is taller? Press left or right arrow", True, TEXT)
     screen.blit(title, title.get_rect(center=(width // 2, 34)))
+
+    if remaining_time_s is not None:
+        seconds_left = countdown_seconds(remaining_time_s)
+        timer_color = FEEDBACK_INCORRECT if seconds_left <= 5 else TEXT
+        timer = label_font.render(f"TIME {seconds_left:02d}", True, timer_color)
+        screen.blit(timer, timer.get_rect(midright=(width - 24, 34)))
 
     label = "Practice" if is_practice else "Trial"
     info = body_font.render(f"Width {bar_width_mm:g} mm    {label} {trial_index}", True, MUTED)

@@ -118,6 +118,8 @@ def run_staircase_pilot(
         result = trial_module.run_trial(screen, clock, calibration, instrument, cfg, spec, trial_index, fps=60)
         if result is None:
             return
+        if isinstance(result, trial_module.TrialTimeout):
+            continue
         staircase.update(result.correct)
         trial_index += 1
 
@@ -169,11 +171,20 @@ def run_constant_stimuli(
     if not wait_for_space_or_escape(screen, "Main block. No feedback unless configured."):
         return
 
-    trials = constant_stimuli.build_trial_sequence(cfg, seed)
-    for i, spec in enumerate(trials, start=1):
-        result = trial_module.run_trial(screen, clock, calibration, instrument, cfg, spec, i, fps=60)
+    pending_trials = constant_stimuli.build_trial_sequence(cfg, seed)
+    total_trials = len(pending_trials)
+    completed_trials = 0
+    while pending_trials:
+        spec = pending_trials.pop(0)
+        trial_index = completed_trials + 1
+        result = trial_module.run_trial(
+            screen, clock, calibration, instrument, cfg, spec, trial_index, fps=60
+        )
         if result is None:
             return
+        if isinstance(result, trial_module.TrialTimeout):
+            constant_stimuli.requeue_timed_out_trial(pending_trials, spec, cfg, rng)
+            continue
 
         data_logger.append_trial(
             {
@@ -196,9 +207,17 @@ def run_constant_stimuli(
             },
             trial_path,
         )
+        completed_trials += 1
 
-        if cfg.break_every_n_trials and i % cfg.break_every_n_trials == 0 and i < len(trials):
-            if not wait_for_space_or_escape(screen, f"Break. {i}/{len(trials)} trials done."):
+        if (
+            cfg.break_every_n_trials
+            and completed_trials % cfg.break_every_n_trials == 0
+            and completed_trials < total_trials
+        ):
+            if not wait_for_space_or_escape(
+                screen,
+                f"Break. {completed_trials}/{total_trials} trials done.",
+            ):
                 return
 
 

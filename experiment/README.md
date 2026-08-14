@@ -63,8 +63,13 @@ participant responds with the arrow keys:
 - **← (Left arrow)** — the left bar felt taller.
 - **→ (Right arrow)** — the right bar felt taller.
 
-Trials are **unspeeded** (there is no exposure or response deadline; participants
-may re-explore freely), and response time is logged per trial for reference. Which
+Practice trials are unspeeded. Main-block trials have a configurable response
+limit (`response_timeout_s`, 30 seconds by default). If no bar is selected before
+the limit, a beep sounds and another randomly selected pending bar pair is shown
+under the same trial number. The unanswered slot remains pending, so the session
+still collects exactly the configured number of responses. Response time is logged
+per completed trial for reference. A visible countdown is shown during main trials
+and turns red for the final five seconds. Which
 side holds the reference vs. the comparison is counterbalanced within each level,
 and a response is scored correct when it matches the objectively taller side.
 
@@ -115,6 +120,7 @@ catch_trial_pct: 0.10
 feedback: false
 n_practice_trials: 8
 break_every_n_trials: 30
+response_timeout_s: 30.0
 
 blind_test_mode: false   # true -> hide bars, locate them by touch only (no visual)
 

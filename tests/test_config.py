@@ -10,7 +10,13 @@ def test_load_default_yaml_config():
     assert isinstance(cfg, ExperimentConfig)
     assert cfg.base_height_mm == 10.0
     assert cfg.delta_max_pct == 0.30
+    assert cfg.response_timeout_s == 30.0
     assert cfg.mode == "constant_stimuli"
+
+
+def test_non_positive_response_timeout_rejected():
+    with pytest.raises(ValueError):
+        ExperimentConfig(base_height_mm=10.0, bar_width_mm=10.0, response_timeout_s=0)
 
 
 def test_load_pilot_yaml_config():

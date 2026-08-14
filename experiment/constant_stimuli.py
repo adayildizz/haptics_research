@@ -125,3 +125,48 @@ def resolve_seed(cfg: ExperimentConfig) -> int:
     if cfg.rng_seed is not None:
         return cfg.rng_seed
     return random.SystemRandom().randrange(0, 2**32 - 1)
+
+
+def requeue_timed_out_trial(
+    pending: list[TrialSpec],
+    timed_out: TrialSpec,
+    cfg: ExperimentConfig,
+    rng: random.Random,
+) -> None:
+    """Return an unanswered trial to the pool and randomize the next display.
+
+    A different comparison height is selected for the next attempt. The
+    unanswered slot stays pending, so only answered trials reduce the
+    configured total.
+    """
+    different_height = [
+        index
+        for index, candidate in enumerate(pending)
+        if candidate.comparison_height_mm != timed_out.comparison_height_mm
+    ]
+    if different_height:
+        # Keep the original scheduled trial and bring a visibly different
+        # pending trial to the front.
+        pending.append(timed_out)
+        next_index = rng.choice(different_height)
+        pending[0], pending[next_index] = pending[next_index], pending[0]
+        return
+
+    # If only this height remains, replace the unanswered slot with another
+    # configured level. This still preserves the number of required answers.
+    alternative_levels = [
+        level
+        for level in compute_levels(cfg)
+        if comparison_height_mm(cfg.base_height_mm, level) != timed_out.comparison_height_mm
+    ]
+    replacement_level = rng.choice(alternative_levels)
+    pending.append(
+        TrialSpec(
+            level_pct=replacement_level,
+            comparison_height_mm=comparison_height_mm(cfg.base_height_mm, replacement_level),
+            reference_height_mm=cfg.base_height_mm,
+            reference_side=rng.choice(["left", "right"]),
+            is_catch=timed_out.is_catch,
+            is_practice=False,
+        )
+    )

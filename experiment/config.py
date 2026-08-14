@@ -73,6 +73,7 @@ class ExperimentConfig:
     feedback: bool = False
     n_practice_trials: int = 8
     break_every_n_trials: int = 30
+    response_timeout_s: float = 30.0
 
     # Display
     blind_test_mode: bool = False  # hide the bars/columns entirely; find them by touch only
@@ -103,6 +104,8 @@ class ExperimentConfig:
             raise ValueError("n_levels must be >= 2")
         if self.trials_per_level < 1:
             raise ValueError("trials_per_level must be >= 1")
+        if self.response_timeout_s <= 0:
+            raise ValueError("response_timeout_s must be > 0")
         if self.mode not in ("constant_stimuli", "staircase_pilot"):
             raise ValueError(f"unknown mode: {self.mode!r}")
 

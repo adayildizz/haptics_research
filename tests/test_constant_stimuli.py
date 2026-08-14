@@ -11,6 +11,7 @@ from experiment.constant_stimuli import (
     comparison_height_mm,
     compute_levels,
     resolve_seed,
+    requeue_timed_out_trial,
 )
 
 
@@ -117,3 +118,27 @@ def test_resolve_seed_generates_when_unset():
 def test_inter_bar_gap_below_minimum_rejected():
     with pytest.raises(ValueError):
         _cfg(inter_bar_gap_mm=1.0)
+
+
+def test_timed_out_trial_is_requeued_without_reducing_total():
+    cfg = _cfg(delta_max_pct=0.30, n_levels=6, trials_per_level=2, catch_trial_pct=0)
+    trials = build_trial_sequence(cfg, seed=4)
+    timed_out = trials.pop(0)
+    original_total = len(trials) + 1
+
+    requeue_timed_out_trial(trials, timed_out, cfg, random.Random(7))
+
+    assert len(trials) == original_total
+    assert timed_out in trials
+    assert trials[0].comparison_height_mm != timed_out.comparison_height_mm
+
+
+def test_last_timed_out_slot_gets_a_different_random_height():
+    cfg = _cfg(delta_max_pct=0.30, n_levels=6, trials_per_level=2, catch_trial_pct=0)
+    timed_out = build_trial_sequence(cfg, seed=4)[0]
+    pending = []
+
+    requeue_timed_out_trial(pending, timed_out, cfg, random.Random(7))
+
+    assert len(pending) == 1
+    assert pending[0].comparison_height_mm != timed_out.comparison_height_mm

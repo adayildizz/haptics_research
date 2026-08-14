@@ -16,6 +16,7 @@ catch_trial_pct: 0.10
 feedback: false
 n_practice_trials: 8
 break_every_n_trials: 30
+response_timeout_s: 30.0
 
 carrier_freq_hz: 125.0
 voltage_peak: 4.0

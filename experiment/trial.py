@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import math
 import time
+from array import array
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -29,6 +31,49 @@ class TrialResult:
     response_time_s: float
     passes: list[dict[str, Any]] = field(default_factory=list)
     timestamp: str = ""
+
+
+@dataclass(frozen=True)
+class TrialTimeout:
+    """Signals that a non-practice trial expired without a response."""
+
+    elapsed_s: float
+
+
+_timeout_beep: pygame.mixer.Sound | None = None
+_timeout_beep_unavailable = False
+
+
+def _play_timeout_beep() -> None:
+    """Play a short synthesized beep without requiring an audio asset file."""
+    global _timeout_beep, _timeout_beep_unavailable
+    if _timeout_beep_unavailable:
+        return
+    try:
+        if pygame.mixer.get_init() is None:
+            pygame.mixer.init(frequency=44_100, size=-16, channels=1)
+        if _timeout_beep is None:
+            sample_rate = pygame.mixer.get_init()[0]
+            duration_s = 0.25
+            frequency_hz = 880.0
+            amplitude = 12_000
+            samples = array(
+                "h",
+                (
+                    int(amplitude * math.sin(2.0 * math.pi * frequency_hz * i / sample_rate))
+                    for i in range(int(sample_rate * duration_s))
+                ),
+            )
+            _timeout_beep = pygame.mixer.Sound(buffer=samples.tobytes())
+        _timeout_beep.play()
+    except pygame.error as exc:
+        _timeout_beep_unavailable = True
+        print(f"Timeout beep unavailable ({exc}).")
+
+
+def should_time_out(is_practice: bool, elapsed_s: float, timeout_s: float) -> bool:
+    """Practice trials are unlimited; all other trials use the configured limit."""
+    return not is_practice and elapsed_s >= timeout_s
 
 
 class _PassTracker:
@@ -91,8 +136,8 @@ def run_trial(
     spec: TrialSpec,
     trial_index: int,
     fps: int,
-) -> TrialResult | None:
-    """Run one 2AFC trial and return the participant response, or ``None`` on quit."""
+) -> TrialResult | TrialTimeout | None:
+    """Run one 2AFC trial, returning a response, timeout, or ``None`` on quit."""
     comparison_side = "right" if spec.reference_side == "left" else "left"
     left_is_comparison = comparison_side == "left"
     layout = display.make_trial_layout(
@@ -148,6 +193,13 @@ def run_trial(
                         pygame.time.wait(500)
                     return result
 
+        elapsed_trial_s = now - trial_start
+        if should_time_out(spec.is_practice, elapsed_trial_s, cfg.response_timeout_s):
+            stimulus.signal_off(instrument)
+            tracker.finish(now)
+            _play_timeout_beep()
+            return TrialTimeout(elapsed_s=elapsed_trial_s)
+
         pos = pygame.mouse.get_pos()
         elapsed = max(now - last_time, 1e-6)
         dx = (pos[0] - last_pos[0]) / calibration.px_per_mm_x
@@ -180,6 +232,11 @@ def run_trial(
             active_side=active_side,
             blind_test_mode=cfg.blind_test_mode,
             touch_pos=pos,
+            remaining_time_s=(
+                None
+                if spec.is_practice
+                else max(0.0, cfg.response_timeout_s - elapsed_trial_s)
+            ),
         )
         pygame.display.flip()
         previous_side = active_side

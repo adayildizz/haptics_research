@@ -53,6 +53,7 @@ FIELD_GROUPS: list[tuple[str, list[tuple[str, str, str]]]] = [
         ("feedback", "Geri bildirim ver", "bool"),
         ("n_practice_trials", "Alıştırma deneme sayısı", "int"),
         ("break_every_n_trials", "Kaç denemede bir mola", "int"),
+        ("response_timeout_s", "Yanıt süresi (saniye)", "float"),
         ("blind_test_mode", "Kör test modu (çubukları gösterme)", "bool"),
     ]),
     ("Donanım / İşleme", [
@@ -113,6 +114,9 @@ FIELD_HELP: dict[str, str] = {
     "deneme sayısı. Mühendislik tercihi, belirli bir referansa bağlı değil.",
     "break_every_n_trials": "Kaç denemede bir zorunlu mola verileceği; yorgunluk ve dikkat kaybını "
     "azaltmak içindir. Belirli bir referansa bağlı değil.",
+    "response_timeout_s": "Ana blokta her yanıt için tanınan süre. Süre dolunca uyarı sesi çalar; "
+    "yanıtlanmayan deneme sayılmadan bekleyen bar çiftleri yeniden karıştırılır. Alıştırma "
+    "denemelerinde süre sınırı uygulanmaz.",
     "blind_test_mode": "Dokunulacak iki sütun tam ekran yüksekliğinde beyaz şeritlerle işaretlenir "
     "(konumlarını bulmak kör bir arama olmasın diye), ama şeritlerin içindeki gerçek yükseklik "
     "çubukları hiç çizilmez -- yükseklik test edilen şey olduğu için ekrandan okunamamalı, sadece "
