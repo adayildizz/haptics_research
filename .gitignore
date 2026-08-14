@@ -38,4 +38,5 @@ $RECYCLE.BIN/
 
 # --- Experiment GUI local state ---
 experiment/configs/.last_used.yaml
-experiment/data
+# --- Generated experiment data and replay recordings ---
+experiment/data/
