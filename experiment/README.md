@@ -38,14 +38,15 @@ A high-resolution timer (`time.perf_counter()`) controls signal delivery indepen
 
 ## Procedure
 
-Each session runs as a single participant-facing fullscreen flow controlled
-entirely from the numpad. **Numpad Enter** advances the flow and **Numpad 0**
-safely exits at any point (as does closing the window). The task is
-two-alternative forced choice (2AFC): two bars are shown side-by-side and the
-participant decides which is **taller**.
+Each session runs as a single participant-facing fullscreen flow that supports
+both a regular keyboard and a numpad. **Space**, **Enter**, or **Numpad Enter**
+advances the flow; **Escape** or **Numpad 0** safely exits at any point (as does
+closing the window). The task is two-alternative forced choice (2AFC): two bars
+are shown side-by-side and the participant decides which is **taller**.
 
 1. **Start screen.** The session opens on a "Ready to begin" prompt showing the
-   mode and the base height/width for this configuration. Press **Numpad Enter** to begin.
+   mode and the base height/width for this configuration. Press **Space**,
+   **Enter**, or **Numpad Enter** to begin.
 2. **Practice block** (skipped if `n_practice_trials == 0`). A short run of easy
    trials at the extreme levels (±`delta_max_pct`) with **feedback forced on**,
    so the participant learns the response mapping before real data is collected.
@@ -54,18 +55,19 @@ participant decides which is **taller**.
 3. **Main block.** The full shuffled constant-stimuli sequence (levels + catch
    trials, interleaved). **Feedback is off** here unless `feedback: true` is set.
 4. **Breaks.** Every `break_every_n_trials` trials the screen pauses on a break
-   prompt showing progress; the participant resumes with **Numpad Enter**.
+   prompt showing progress; the participant resumes with **Space**, **Enter**,
+   or **Numpad Enter**.
 5. **End screen.** A "Session complete" message confirms data was saved.
 
 Within a single trial the participant slides a finger across the touch surface to
 explore the two bars. The electroadhesion signal is delivered over the **bar
 interior only** (interior = ON, exterior = OFF), so each bar is felt as a raised
 region whose width is governed by the timing method above. When ready, the
-participant responds with the numpad:
+participant responds with either keyboard layout:
 
-- **Numpad 4** — the left bar felt taller.
-- **Numpad 6** — the right bar felt taller.
-- **Numpad 0** — safely exit the experiment.
+- **Left arrow** or **Numpad 4** — the left bar felt taller.
+- **Right arrow** or **Numpad 6** — the right bar felt taller.
+- **Escape** or **Numpad 0** — safely exit the experiment.
 
 Practice trials are unspeeded. Main-block trials have a configurable response
 limit (`response_timeout_s`, 30 seconds by default). If no bar is selected before

@@ -137,11 +137,7 @@ def draw_trial(
     label_font = pygame.font.SysFont("Arial", 24, bold=True)
     body_font = pygame.font.SysFont("Arial", 20)
 
-    title = title_font.render(
-        f"Which bar is taller?   {LEFT_LABEL}: LEFT   {RIGHT_LABEL}: RIGHT",
-        True,
-        TEXT,
-    )
+    title = title_font.render("Which bar is taller?", True, TEXT)
     screen.blit(title, title.get_rect(center=(width // 2, 34)))
 
     if remaining_time_s is not None:
@@ -162,8 +158,8 @@ def draw_trial(
         pygame.draw.rect(screen, BAR_OUTLINE, layout.left_bar, 2)
         pygame.draw.rect(screen, BAR_OUTLINE, layout.right_bar, 2)
 
-    left_label = label_font.render("LEFT", True, TEXT)
-    right_label = label_font.render("RIGHT", True, TEXT)
+    left_label = label_font.render(f"LEFT  ({LEFT_LABEL})", True, TEXT)
+    right_label = label_font.render(f"RIGHT  ({RIGHT_LABEL})", True, TEXT)
     screen.blit(left_label, left_label.get_rect(center=(width // 4, height - 105)))
     screen.blit(right_label, right_label.get_rect(center=(width * 3 // 4, height - 105)))
 
