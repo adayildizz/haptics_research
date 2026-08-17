@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 import shutil
 import subprocess
+import sys
 from collections.abc import Callable
 from typing import Literal
 
@@ -20,6 +21,14 @@ _MESSAGES: dict[SpeedState, str] = {
     "ideal": "Good speed",
     "too_fast": "Slower",
 }
+
+_WINDOWS_SAPI_SCRIPT = (
+    "[Console]::InputEncoding = [System.Text.Encoding]::UTF8; "
+    "Add-Type -AssemblyName System.Speech; "
+    "$voice = New-Object System.Speech.Synthesis.SpeechSynthesizer; "
+    "try { $voice.Rate = 2; $voice.Speak([Console]::In.ReadToEnd()) } "
+    "finally { $voice.Dispose() }"
+)
 
 
 def classify_speed(speed_mm_s: float, target_mm_s: float, tolerance_pct: float) -> SpeedState:
@@ -39,12 +48,37 @@ class SystemVoice:
     def __init__(self) -> None:
         self._command: list[str] | None = None
         self._process: subprocess.Popen[bytes] | None = None
-        if shutil.which("say"):
+        self._message_via_stdin = False
+        self._backend: str | None = None
+        self._failure_reported = False
+
+        powershell = None
+        if sys.platform == "win32":
+            powershell = (
+                shutil.which("powershell.exe")
+                or shutil.which("powershell")
+                or shutil.which("pwsh.exe")
+                or shutil.which("pwsh")
+            )
+        if powershell is not None:
+            self._command = [
+                powershell,
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                _WINDOWS_SAPI_SCRIPT,
+            ]
+            self._message_via_stdin = True
+            self._backend = "windows_sapi"
+        elif shutil.which("say"):
             self._command = ["say", "-r", "220"]
+            self._backend = "macos_say"
         elif shutil.which("espeak"):
             self._command = ["espeak", "-s", "180"]
+            self._backend = "espeak"
         elif shutil.which("spd-say"):
             self._command = ["spd-say"]
+            self._backend = "spd_say"
         else:
             print("Practice voice feedback unavailable: no system TTS command found.")
 
@@ -52,28 +86,68 @@ class SystemVoice:
     def available(self) -> bool:
         return self._command is not None
 
+    @property
+    def backend(self) -> str | None:
+        return self._backend
+
     def speak(self, message: str, *, wait: bool = False) -> bool:
         if self._command is None:
             return False
-        if self._process is not None and self._process.poll() is None:
+        if self._process is not None:
+            returncode = self._process.poll()
+            if returncode is None:
+                return False
+            self._process = None
+            if returncode != 0:
+                self._disable(f"TTS process exited with code {returncode}")
+                return False
+
+        command = list(self._command)
+        input_bytes = message.encode("utf-8") if self._message_via_stdin else None
+        if not self._message_via_stdin:
+            command.append(message)
+        creationflags = (
+            getattr(subprocess, "CREATE_NO_WINDOW", 0)
+            if self._backend == "windows_sapi"
+            else 0
+        )
+        try:
+            if wait:
+                completed = subprocess.run(
+                    command,
+                    check=False,
+                    input=input_bytes,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    creationflags=creationflags,
+                )
+                self._process = None
+                if completed.returncode != 0:
+                    self._disable(f"TTS process exited with code {completed.returncode}")
+                    return False
+            else:
+                self._process = subprocess.Popen(
+                    command,
+                    stdin=subprocess.PIPE if input_bytes is not None else None,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    creationflags=creationflags,
+                )
+                if input_bytes is not None:
+                    assert self._process.stdin is not None
+                    self._process.stdin.write(input_bytes)
+                    self._process.stdin.close()
+            return True
+        except (OSError, BrokenPipeError) as exc:
+            self._disable(str(exc))
             return False
 
-        command = [*self._command, message]
-        if wait:
-            subprocess.run(
-                command,
-                check=False,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-            self._process = None
-        else:
-            self._process = subprocess.Popen(
-                command,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-        return True
+    def _disable(self, reason: str) -> None:
+        self._command = None
+        self._backend = None
+        if not self._failure_reported:
+            print(f"Practice voice feedback unavailable: {reason}.")
+            self._failure_reported = True
 
     def close(self) -> None:
         if self._process is not None and self._process.poll() is None:

@@ -52,6 +52,8 @@ are shown side-by-side and the participant decides which is **taller**.
    so the participant learns the response mapping before real data is collected.
    Optional spoken speed coaching says “Faster,” “Good speed,” or “Slower” after
    a stable speed reading. This coaching is disabled throughout the main block.
+   Voice output uses native Windows SAPI through PowerShell on Windows, `say` on
+   macOS, and `espeak` or `spd-say` on Linux.
 3. **Main block.** The full shuffled constant-stimuli sequence (levels + catch
    trials, interleaved). **Feedback is off** here unless `feedback: true` is set.
 4. **Breaks.** Every `break_every_n_trials` trials the screen pauses on a break

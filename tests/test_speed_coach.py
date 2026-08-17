@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from experiment.speed_coach import PracticeSpeedCoach, classify_speed
+from types import SimpleNamespace
+
+from experiment import speed_coach
+from experiment.speed_coach import PracticeSpeedCoach, SystemVoice, classify_speed
 
 
 def test_speed_classification_uses_configured_band():
@@ -62,3 +65,47 @@ def test_coach_retries_when_voice_is_temporarily_busy():
     coach.update(100.0, 0.1, 0.2, in_active_area=True)
 
     assert attempts == ["Good speed", "Good speed"]
+
+
+def test_windows_voice_uses_native_sapi_and_passes_text_over_stdin(monkeypatch):
+    monkeypatch.setattr(speed_coach.sys, "platform", "win32")
+    monkeypatch.setattr(
+        speed_coach.shutil,
+        "which",
+        lambda name: r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
+        if name == "powershell.exe"
+        else None,
+    )
+    calls = []
+
+    def fake_run(command, **kwargs):
+        calls.append((command, kwargs))
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(speed_coach.subprocess, "run", fake_run)
+
+    voice = SystemVoice()
+    assert voice.available
+    assert voice.backend == "windows_sapi"
+    assert voice.speak("Good speed", wait=True)
+
+    command, kwargs = calls[0]
+    assert command[0].endswith("powershell.exe")
+    assert "System.Speech" in command[-1]
+    assert kwargs["input"] == b"Good speed"
+
+
+def test_windows_voice_falls_back_when_powershell_is_missing(monkeypatch):
+    monkeypatch.setattr(speed_coach.sys, "platform", "win32")
+    monkeypatch.setattr(
+        speed_coach.shutil,
+        "which",
+        lambda name: r"C:\Program Files\eSpeak\command_line\espeak.exe"
+        if name == "espeak"
+        else None,
+    )
+
+    voice = SystemVoice()
+
+    assert voice.available
+    assert voice.backend == "espeak"
