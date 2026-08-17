@@ -25,6 +25,7 @@ from . import calibration as calibration_module
 from . import constant_stimuli, data_logger
 from .config import ExperimentConfig, config_to_dict, load_experiment_config, write_config_snapshot
 from .constant_stimuli import TrialSpec, resolve_seed
+from .input_keys import is_continue_key, is_exit_key
 from .staircase import StairCase, pilot_range_check
 
 if TYPE_CHECKING:
@@ -78,7 +79,7 @@ def run_dry_run(cfg: ExperimentConfig) -> int:
     return 0
 
 
-def wait_for_space_or_escape(screen, message: str) -> bool:
+def wait_for_continue_or_exit(screen, message: str) -> bool:
     import pygame
 
     from . import display
@@ -89,9 +90,9 @@ def wait_for_space_or_escape(screen, message: str) -> bool:
             if event.type == pygame.QUIT:
                 return False
             if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_ESCAPE:
+                if is_exit_key(event.key, pygame):
                     return False
-                if event.key == pygame.K_SPACE:
+                if is_continue_key(event.key, pygame):
                     return True
 
 
@@ -181,7 +182,7 @@ def run_constant_stimuli(
             else None
         )
         try:
-            if not wait_for_space_or_escape(screen, "Practice trials (feedback on)."):
+            if not wait_for_continue_or_exit(screen, "Practice trials (feedback on)."):
                 return
             if voice is not None and voice.available:
                 voice.speak(PRACTICE_INSTRUCTION, wait=True)
@@ -203,7 +204,7 @@ def run_constant_stimuli(
             if voice is not None:
                 voice.close()
 
-    if not wait_for_space_or_escape(screen, "Main block. No feedback unless configured."):
+    if not wait_for_continue_or_exit(screen, "Main block. No feedback unless configured."):
         return
 
     pending_trials = constant_stimuli.build_trial_sequence(cfg, seed)
@@ -280,7 +281,7 @@ def run_constant_stimuli(
             and completed_trials % cfg.break_every_n_trials == 0
             and completed_trials < total_trials
         ):
-            if not wait_for_space_or_escape(
+            if not wait_for_continue_or_exit(
                 screen,
                 f"Break. {completed_trials}/{total_trials} trials done.",
             ):
@@ -338,7 +339,7 @@ def run() -> int:
     instrument = stimulus.connect_hardware(cfg)
 
     try:
-        if not wait_for_space_or_escape(
+        if not wait_for_continue_or_exit(
             screen,
             f"Ready to begin ({cfg.mode}). Base height {cfg.base_height_mm:g} mm, width {cfg.bar_width_mm:g} mm.",
         ):

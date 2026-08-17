@@ -7,6 +7,8 @@ from dataclasses import dataclass
 
 import pygame
 
+from .input_keys import CONTINUE_LABEL, EXIT_LABEL, LEFT_LABEL, RIGHT_LABEL
+
 from .calibration import DisplayCalibration
 from .config import SCREEN_HEIGHT, SCREEN_WIDTH, USE_FULLSCREEN
 
@@ -135,7 +137,11 @@ def draw_trial(
     label_font = pygame.font.SysFont("Arial", 24, bold=True)
     body_font = pygame.font.SysFont("Arial", 20)
 
-    title = title_font.render("Which bar is taller? Press left or right arrow", True, TEXT)
+    title = title_font.render(
+        f"Which bar is taller?   {LEFT_LABEL}: LEFT   {RIGHT_LABEL}: RIGHT",
+        True,
+        TEXT,
+    )
     screen.blit(title, title.get_rect(center=(width // 2, 34)))
 
     if remaining_time_s is not None:
@@ -161,7 +167,7 @@ def draw_trial(
     screen.blit(left_label, left_label.get_rect(center=(width // 4, height - 105)))
     screen.blit(right_label, right_label.get_rect(center=(width * 3 // 4, height - 105)))
 
-    hint = body_font.render("Explore both sides, then answer. ESC exits safely.", True, MUTED)
+    hint = body_font.render(f"Explore both sides, then answer. {EXIT_LABEL} exits safely.", True, MUTED)
     screen.blit(hint, hint.get_rect(center=(width // 2, height - 34)))
 
     if touch_pos is not None:
@@ -181,7 +187,7 @@ def draw_break(screen: pygame.Surface, message: str) -> None:
     font = pygame.font.SysFont("Arial", 30, bold=True)
     subfont = pygame.font.SysFont("Arial", 22)
     text = font.render(message, True, TEXT)
-    hint = subfont.render("Press SPACE to continue, or ESC to exit.", True, MUTED)
+    hint = subfont.render(f"Press {CONTINUE_LABEL} to continue, or {EXIT_LABEL} to exit.", True, MUTED)
     screen.blit(text, text.get_rect(center=(screen.get_width() // 2, screen.get_height() // 2 - 24)))
     screen.blit(hint, hint.get_rect(center=(screen.get_width() // 2, screen.get_height() // 2 + 24)))
     pygame.display.flip()

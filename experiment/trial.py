@@ -15,6 +15,7 @@ from . import display, stimulus
 from .calibration import DisplayCalibration
 from .config import ExperimentConfig
 from .constant_stimuli import TrialSpec
+from .input_keys import is_exit_key, response_for_key
 from .trace_store import CursorSample
 
 if TYPE_CHECKING:
@@ -190,7 +191,7 @@ def run_trial(
                     )
                 return None
             if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_ESCAPE:
+                if is_exit_key(event.key, pygame):
                     stimulus.signal_off(instrument)
                     if trace_attempt is not None:
                         t_us = round((now - trial_start) * 1_000_000)
@@ -198,16 +199,16 @@ def run_trial(
                             trace_attempt.add_event(
                                 t_us=t_us,
                                 event_type="signal_off",
-                                payload={"reason": "escape"},
+                                payload={"reason": "numpad_0"},
                             )
-                        trace_attempt.add_event(t_us=t_us, event_type="aborted", payload={"reason": "escape"})
+                        trace_attempt.add_event(t_us=t_us, event_type="aborted", payload={"reason": "numpad_0"})
                         trace_attempt.finish(
                             ended_us=trace_attempt.session_elapsed_us(),
                             outcome="aborted",
                         )
                     return None
-                if event.key in (pygame.K_LEFT, pygame.K_RIGHT):
-                    response = "left" if event.key == pygame.K_LEFT else "right"
+                response = response_for_key(event.key, pygame)
+                if response is not None:
                     stimulus.signal_off(instrument)
                     tracker.finish(now)
                     correct = response == _taller_side(spec)
