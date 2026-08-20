@@ -49,6 +49,8 @@ are shown side-by-side and the participant decides which is **taller**.
    **Enter**, or **Numpad Enter** to begin.
 2. **Practice block** (skipped if `n_practice_trials == 0`). A short run of easy
    trials at the extreme levels (±`delta_max_pct`) with **feedback forced on**,
+   under the same response limit as the main block (unanswered practice trials are
+   re-shown at the end of practice, subject to the same `max_trial_attempts` cap),
    so the participant learns the response mapping before real data is collected.
    Optional spoken speed coaching says “Faster,” “Good speed,” or “Slower” after
    a stable speed reading. This coaching is disabled throughout the main block.
@@ -71,15 +73,36 @@ participant responds with either keyboard layout:
 - **Right arrow** or **Numpad 6** — the right bar felt taller.
 - **Escape** or **Numpad 0** — safely exit the experiment.
 
-Practice trials are unspeeded. Main-block trials have a configurable response
-limit (`response_timeout_s`, 30 seconds by default). If no bar is selected before
-the limit, a beep sounds and another randomly selected pending bar pair is shown
-under the same trial number. The unanswered slot remains pending, so the session
-still collects exactly the configured number of responses. Response time is logged
-per completed trial for reference. A visible countdown is shown during main trials
-and turns red for the final five seconds. Which
-side holds the reference vs. the comparison is counterbalanced within each level,
-and a response is scored correct when it matches the objectively taller side.
+Every trial, **practice included**, runs under the same response limit
+(`response_timeout_s`, 30 seconds by default), with a visible countdown that turns
+red for the final five seconds — practice is where the participant should first
+meet the clock, not the main block. Two short synthesized cues mark the two ways a
+trial can end (`experiment/audio_cues.py`):
+
+- **Answer registered** — a brief rising blip. Identical for correct and incorrect
+  answers, so it never leaks feedback in the no-feedback main block; it only means
+  "recorded, moving on".
+- **Time expired** — a soft descending chime: slow attack, falling interval, long
+  release. Deliberately an invitation back to the task rather than an alarm.
+
+An unanswered trial is **not** dropped and **not** replaced on the spot. It is
+deferred to a retry pool that is replayed, reshuffled, once the whole scheduled
+sequence has been shown, so the session still collects the configured number of
+responses. The handover into that retry round is silent — no announcement screen,
+no break prompt — so from the participant's side a repeated trial is just the next
+trial.
+
+`max_trial_attempts` (default 3, first showing included) is what keeps the retry
+loop finite: it caps how many times any one trial is presented, so total
+presentations are bounded by `n_trials * max_trial_attempts` no matter how many go
+unanswered. A trial that uses up its attempts is recorded as `exhausted` — logged
+to the console and left in the trace database as a `timeout` attempt, costing one
+observation at its level rather than stalling the run. The curve fit only ever
+consumes `answered` rows, so none of this reaches the psychometric estimate.
+
+Response time is logged per completed trial for reference. Which side holds the
+reference vs. the comparison is counterbalanced within each level, and a response
+is scored correct when it matches the objectively taller side.
 
 ### Blind test variant
 
@@ -128,7 +151,8 @@ catch_trial_pct: 0.10
 feedback: false
 n_practice_trials: 8
 break_every_n_trials: 30
-response_timeout_s: 30.0
+response_timeout_s: 30.0  # response time limit, practice trials included
+max_trial_attempts: 3     # first showing + retries; bounds the retry loop
 practice_voice_feedback: true
 ideal_finger_speed_mm_s: 100.0
 ideal_speed_tolerance_pct: 0.30
@@ -154,6 +178,35 @@ Fit a saved session:
 ```
 python -m analysis.fit_psychometric experiment/data/P01_*_trials.csv --out fit.png
 ```
+
+### Trial log (`<session_id>_trials.csv`)
+
+Every trial the participant was actually shown gets a row — practice included,
+unanswered included — told apart by the **`outcome`** column:
+
+| `outcome` | meaning | in the trace DB |
+| --- | --- | --- |
+| `answered` | a response was given; the only rows the curve fit consumes | `answered` |
+| `timeout` | the response window closed and the trial was deferred for another attempt | `timeout` |
+| `exhausted` | the last attempt allowed by `max_trial_attempts` also expired | `timeout` |
+| `aborted` | the exit key or a closed window ended the trial, and with it the session | `aborted` |
+
+The vocabulary lines up with the trace database's per-attempt `outcome`, so the
+CSV and the replay recordings describe the same set of events. The one refinement
+is `exhausted`: whether a timeout was the *last* allowed attempt is a scheduling
+fact rather than a property of the attempt itself, so the trace still stores it as
+`timeout`.
+
+On every non-`answered` row `response` and `correct` are left **blank** rather than
+`0`: no judgment was made, and a `0` would read as a wrong answer. `response_time_s`
+holds how long the trial was actually open, and `passes_json` still describes what
+the finger was doing — so "was the participant exploring or idle?" stays answerable
+from the CSV alone, without opening the trace database.
+
+Practice rows carry `is_practice = 1`. `analysis/fit_psychometric.py` skips both
+practice and non-`answered` rows, so the psychometric fit is unaffected by any of
+this. CSVs written before the column existed load as `answered` (they only ever
+contained answered trials).
 
 ### Main-trial movement trace
 

@@ -16,7 +16,8 @@ catch_trial_pct: 0.10
 feedback: false
 n_practice_trials: 8
 break_every_n_trials: 30
-response_timeout_s: 30.0
+response_timeout_s: 30.0         # response time limit, practice trials included
+max_trial_attempts: 3            # incl. the first showing; caps the timeout-retry loop
 practice_voice_feedback: true
 ideal_finger_speed_mm_s: 100.0  # 10 cm/s
 ideal_speed_tolerance_pct: 0.30 # accepted band: 70-130 mm/s

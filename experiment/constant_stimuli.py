@@ -127,46 +127,55 @@ def resolve_seed(cfg: ExperimentConfig) -> int:
     return random.SystemRandom().randrange(0, 2**32 - 1)
 
 
-def requeue_timed_out_trial(
-    pending: list[TrialSpec],
-    timed_out: TrialSpec,
-    cfg: ExperimentConfig,
-    rng: random.Random,
-) -> None:
-    """Return an unanswered trial to the pool and randomize the next display.
+@dataclass
+class ScheduledTrial:
+    """A spec plus how many times it has already been put in front of the participant.
 
-    A different comparison height is selected for the next attempt. The
-    unanswered slot stays pending, so only answered trials reduce the
-    configured total.
+    Mutable on purpose: ``attempts`` is what bounds the retry loop (see
+    ``defer_timed_out_trial``), so it has to travel with the trial as it
+    moves between the pending queue and the retry pool.
     """
-    different_height = [
-        index
-        for index, candidate in enumerate(pending)
-        if candidate.comparison_height_mm != timed_out.comparison_height_mm
-    ]
-    if different_height:
-        # Keep the original scheduled trial and bring a visibly different
-        # pending trial to the front.
-        pending.append(timed_out)
-        next_index = rng.choice(different_height)
-        pending[0], pending[next_index] = pending[next_index], pending[0]
-        return
 
-    # If only this height remains, replace the unanswered slot with another
-    # configured level. This still preserves the number of required answers.
-    alternative_levels = [
-        level
-        for level in compute_levels(cfg)
-        if comparison_height_mm(cfg.base_height_mm, level) != timed_out.comparison_height_mm
-    ]
-    replacement_level = rng.choice(alternative_levels)
-    pending.append(
-        TrialSpec(
-            level_pct=replacement_level,
-            comparison_height_mm=comparison_height_mm(cfg.base_height_mm, replacement_level),
-            reference_height_mm=cfg.base_height_mm,
-            reference_side=rng.choice(["left", "right"]),
-            is_catch=timed_out.is_catch,
-            is_practice=False,
-        )
-    )
+    spec: TrialSpec
+    attempts: int = 0
+
+
+def build_schedule(cfg: ExperimentConfig, seed: int) -> list[ScheduledTrial]:
+    """``build_trial_sequence`` wrapped in per-trial attempt bookkeeping."""
+    return [ScheduledTrial(spec) for spec in build_trial_sequence(cfg, seed)]
+
+
+def defer_timed_out_trial(
+    scheduled: ScheduledTrial,
+    deferred: list[ScheduledTrial],
+    max_attempts: int,
+) -> bool:
+    """Move an expired trial to the retry pool, shown after the whole block.
+
+    Returns ``True`` if it was queued for another attempt, ``False`` if it
+    has now used up ``max_attempts`` presentations and must be abandoned.
+
+    That cap is what makes the session terminate. Retrying an unanswered
+    trial is otherwise unbounded: a participant who has walked away, or a
+    ``response_timeout_s`` set too short for the task, would keep feeding
+    the same trials back into the queue forever. With the cap, the whole
+    session presents at most ``len(schedule) * max_attempts`` trials no
+    matter how many go unanswered, and an abandoned trial simply costs one
+    observation at its level rather than stalling the run.
+    """
+    if scheduled.attempts >= max_attempts:
+        return False
+    deferred.append(scheduled)
+    return True
+
+
+def take_retry_round(deferred: list[ScheduledTrial], rng: random.Random) -> list[ScheduledTrial]:
+    """Drain the retry pool into a freshly shuffled round, emptying ``deferred``.
+
+    Reshuffling matters: replaying in timeout order would present the
+    missed trials in a systematic sequence rather than a random one.
+    """
+    round_trials = list(deferred)
+    deferred.clear()
+    rng.shuffle(round_trials)
+    return round_trials

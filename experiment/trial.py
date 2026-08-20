@@ -2,16 +2,14 @@
 
 from __future__ import annotations
 
-import math
 import time
-from array import array
 from dataclasses import dataclass, field
 from typing import Any
 from typing import TYPE_CHECKING
 
 import pygame
 
-from . import display, stimulus
+from . import audio_cues, display, stimulus
 from .calibration import DisplayCalibration
 from .config import ExperimentConfig
 from .constant_stimuli import TrialSpec
@@ -41,46 +39,44 @@ class TrialResult:
 
 
 @dataclass(frozen=True)
+class TrialAborted:
+    """The trial was cut short by an exit key or a closed window.
+
+    Returned instead of ``None`` so the caller can log the partial trial
+    before shutting the session down: an abort is a real thing that
+    happened to a participant, and the trial CSV should say so rather than
+    the row simply being absent.
+    """
+
+    reason: str  # "exit_key" | "window_closed"
+    elapsed_s: float
+    passes: list[dict[str, Any]] = field(default_factory=list)
+    timestamp: str = ""
+
+
+@dataclass(frozen=True)
 class TrialTimeout:
-    """Signals that a non-practice trial expired without a response."""
+    """Signals that a trial expired without a response (practice included).
+
+    Carries the same exploration record an answered trial does: the passes
+    show whether the participant was working the bars or idle when the
+    window closed, which is the interesting question about a timeout.
+    """
 
     elapsed_s: float
+    passes: list[dict[str, Any]] = field(default_factory=list)
+    timestamp: str = ""
 
 
-_timeout_beep: pygame.mixer.Sound | None = None
-_timeout_beep_unavailable = False
+def should_time_out(elapsed_s: float, timeout_s: float) -> bool:
+    """Every trial, practice included, uses the configured response limit.
 
-
-def _play_timeout_beep() -> None:
-    """Play a short synthesized beep without requiring an audio asset file."""
-    global _timeout_beep, _timeout_beep_unavailable
-    if _timeout_beep_unavailable:
-        return
-    try:
-        if pygame.mixer.get_init() is None:
-            pygame.mixer.init(frequency=44_100, size=-16, channels=1)
-        if _timeout_beep is None:
-            sample_rate = pygame.mixer.get_init()[0]
-            duration_s = 0.25
-            frequency_hz = 880.0
-            amplitude = 12_000
-            samples = array(
-                "h",
-                (
-                    int(amplitude * math.sin(2.0 * math.pi * frequency_hz * i / sample_rate))
-                    for i in range(int(sample_rate * duration_s))
-                ),
-            )
-            _timeout_beep = pygame.mixer.Sound(buffer=samples.tobytes())
-        _timeout_beep.play()
-    except pygame.error as exc:
-        _timeout_beep_unavailable = True
-        print(f"Timeout beep unavailable ({exc}).")
-
-
-def should_time_out(is_practice: bool, elapsed_s: float, timeout_s: float) -> bool:
-    """Practice trials are unlimited; all other trials use the configured limit."""
-    return not is_practice and elapsed_s >= timeout_s
+    Practice used to be unlimited, which meant participants first met the
+    countdown in the main block -- the one place where running out of time
+    actually costs a trial. Practicing under the same clock is the point of
+    practice.
+    """
+    return elapsed_s >= timeout_s
 
 
 class _PassTracker:
@@ -145,8 +141,8 @@ def run_trial(
     fps: int,
     speed_coach: PracticeSpeedCoach | None = None,
     trace_attempt: AttemptTraceBuffer | None = None,
-) -> TrialResult | TrialTimeout | None:
-    """Run one 2AFC trial, returning a response, timeout, or ``None`` on quit."""
+) -> TrialResult | TrialTimeout | TrialAborted:
+    """Run one 2AFC trial, returning a response, a timeout, or an abort."""
     comparison_side = "right" if spec.reference_side == "left" else "left"
     left_is_comparison = comparison_side == "left"
     layout = display.make_trial_layout(
@@ -176,6 +172,7 @@ def run_trial(
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 stimulus.signal_off(instrument)
+                tracker.finish(now)
                 if trace_attempt is not None:
                     t_us = round((now - trial_start) * 1_000_000)
                     if previous_signal_on:
@@ -189,10 +186,16 @@ def run_trial(
                         ended_us=trace_attempt.session_elapsed_us(),
                         outcome="aborted",
                     )
-                return None
+                return TrialAborted(
+                    reason="window_closed",
+                    elapsed_s=now - trial_start,
+                    passes=tracker.passes,
+                    timestamp=time.strftime("%Y-%m-%dT%H:%M:%S"),
+                )
             if event.type == pygame.KEYDOWN:
                 if is_exit_key(event.key, pygame):
                     stimulus.signal_off(instrument)
+                    tracker.finish(now)
                     if trace_attempt is not None:
                         t_us = round((now - trial_start) * 1_000_000)
                         if previous_signal_on:
@@ -206,11 +209,19 @@ def run_trial(
                             ended_us=trace_attempt.session_elapsed_us(),
                             outcome="aborted",
                         )
-                    return None
+                    return TrialAborted(
+                        reason="exit_key",
+                        elapsed_s=now - trial_start,
+                        passes=tracker.passes,
+                        timestamp=time.strftime("%Y-%m-%dT%H:%M:%S"),
+                    )
                 response = response_for_key(event.key, pygame)
                 if response is not None:
                     stimulus.signal_off(instrument)
                     tracker.finish(now)
+                    # Same cue whether the answer was right or wrong: it marks
+                    # "recorded, moving on", not correctness.
+                    audio_cues.play_response_cue()
                     correct = response == _taller_side(spec)
                     result = TrialResult(
                         trial_index=trial_index,
@@ -253,10 +264,10 @@ def run_trial(
                     return result
 
         elapsed_trial_s = now - trial_start
-        if should_time_out(spec.is_practice, elapsed_trial_s, cfg.response_timeout_s):
+        if should_time_out(elapsed_trial_s, cfg.response_timeout_s):
             stimulus.signal_off(instrument)
             tracker.finish(now)
-            _play_timeout_beep()
+            audio_cues.play_timeout_cue()
             if trace_attempt is not None:
                 t_us = round(elapsed_trial_s * 1_000_000)
                 if previous_signal_on:
@@ -274,7 +285,11 @@ def run_trial(
                     ended_us=trace_attempt.session_elapsed_us(),
                     outcome="timeout",
                 )
-            return TrialTimeout(elapsed_s=elapsed_trial_s)
+            return TrialTimeout(
+                elapsed_s=elapsed_trial_s,
+                passes=tracker.passes,
+                timestamp=time.strftime("%Y-%m-%dT%H:%M:%S"),
+            )
 
         pos = pygame.mouse.get_pos()
         elapsed = max(now - last_time, 1e-6)
@@ -348,11 +363,7 @@ def run_trial(
             active_side=active_side,
             blind_test_mode=cfg.blind_test_mode,
             touch_pos=pos,
-            remaining_time_s=(
-                None
-                if spec.is_practice
-                else max(0.0, cfg.response_timeout_s - elapsed_trial_s)
-            ),
+            remaining_time_s=max(0.0, cfg.response_timeout_s - elapsed_trial_s),
         )
         pygame.display.flip()
         previous_side = active_side

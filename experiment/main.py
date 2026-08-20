@@ -19,7 +19,7 @@ import time
 from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import Any, TYPE_CHECKING
 
 from . import calibration as calibration_module
 from . import constant_stimuli, data_logger
@@ -123,7 +123,7 @@ def run_staircase_pilot(
             is_practice=False,
         )
         result = trial_module.run_trial(screen, clock, calibration, instrument, cfg, spec, trial_index, fps=60)
-        if result is None:
+        if isinstance(result, trial_module.TrialAborted):
             return
         if isinstance(result, trial_module.TrialTimeout):
             continue
@@ -147,6 +147,46 @@ def run_staircase_pilot(
     warning = pilot_range_check(threshold_pct, cfg.delta_max_pct)
     if warning:
         print(f"WARNING: {warning}")
+
+
+def _trial_row(
+    session_id: str,
+    cfg: ExperimentConfig,
+    spec: TrialSpec,
+    trial_index: int,
+    outcome: str,
+    result: Any,
+) -> dict[str, Any]:
+    """Build one trial CSV row for any outcome.
+
+    Every trial the participant was actually shown gets a row -- answered,
+    timed out, exhausted, or aborted -- told apart by ``outcome``, so the CSV
+    and the trace database describe the same set of events. Unanswered rows
+    leave ``response`` and ``correct`` blank rather than writing 0, because a
+    0 there would read as a wrong answer; ``response_time_s`` holds how long
+    the trial was actually open, and the passes still describe what the
+    finger was doing.
+    """
+    answered = outcome == "answered"
+    return {
+        "session_id": session_id,
+        "participant_id": cfg.participant_id,
+        "timestamp": result.timestamp,
+        "trial_index": trial_index,
+        "mode": cfg.mode,
+        "reference_side": spec.reference_side,
+        "outcome": outcome,
+        "response": result.response if answered else "",
+        "correct": int(result.correct) if answered else "",
+        "level_pct": f"{spec.level_pct:.6f}",
+        "comparison_height_mm": f"{spec.comparison_height_mm:.4f}",
+        "reference_height_mm": f"{spec.reference_height_mm:.4f}",
+        "bar_width_mm": f"{cfg.bar_width_mm:.4f}",
+        "is_catch": int(spec.is_catch),
+        "is_practice": int(spec.is_practice),
+        "response_time_s": f"{(result.response_time_s if answered else result.elapsed_s):.4f}",
+        "passes": result.passes,
+    }
 
 
 def run_constant_stimuli(
@@ -186,19 +226,45 @@ def run_constant_stimuli(
                 return
             if voice is not None and voice.available:
                 voice.speak(PRACTICE_INSTRUCTION, wait=True)
-            for i, spec in enumerate(constant_stimuli.build_practice_sequence(cfg, rng), start=1):
+            practice_pending = [
+                constant_stimuli.ScheduledTrial(spec)
+                for spec in constant_stimuli.build_practice_sequence(cfg, rng)
+            ]
+            practice_deferred: list[constant_stimuli.ScheduledTrial] = []
+            shown = 0
+            while practice_pending or practice_deferred:
+                if not practice_pending:
+                    practice_pending = constant_stimuli.take_retry_round(practice_deferred, rng)
+                scheduled = practice_pending.pop(0)
+                scheduled.attempts += 1
+                shown += 1
                 result = trial_module.run_trial(
                     screen,
                     clock,
                     calibration,
                     instrument,
                     cfg,
-                    spec,
-                    i,
+                    scheduled.spec,
+                    shown,
                     fps=60,
                     speed_coach=speed_coach,
                 )
-                if result is None:
+                if isinstance(result, trial_module.TrialAborted):
+                    outcome = "aborted"
+                elif isinstance(result, trial_module.TrialTimeout):
+                    # Practice is timed too now, so it needs the same bounded
+                    # retry: re-shown at the end of practice, then let go.
+                    requeued = constant_stimuli.defer_timed_out_trial(
+                        scheduled, practice_deferred, cfg.max_trial_attempts
+                    )
+                    outcome = "timeout" if requeued else "exhausted"
+                else:
+                    outcome = "answered"
+                data_logger.append_trial(
+                    _trial_row(session_id, cfg, scheduled.spec, shown, outcome, result),
+                    trial_path,
+                )
+                if outcome == "aborted":
                     return
         finally:
             if voice is not None:
@@ -207,12 +273,22 @@ def run_constant_stimuli(
     if not wait_for_continue_or_exit(screen, "Main block. No feedback unless configured."):
         return
 
-    pending_trials = constant_stimuli.build_trial_sequence(cfg, seed)
+    pending_trials = constant_stimuli.build_schedule(cfg, seed)
     total_trials = len(pending_trials)
+    deferred_trials: list[constant_stimuli.ScheduledTrial] = []
     completed_trials = 0
+    exhausted_trials = 0
     attempt_counts: dict[int, int] = {}
-    while pending_trials:
-        spec = pending_trials.pop(0)
+    while pending_trials or deferred_trials:
+        if not pending_trials:
+            # The scheduled sequence is done; everything that expired is
+            # replayed here, at the very end of the block. No announcement
+            # screen: from the participant's side this is just the next trial,
+            # so retries are not flagged as retries.
+            pending_trials = constant_stimuli.take_retry_round(deferred_trials, rng)
+        scheduled = pending_trials.pop(0)
+        scheduled.attempts += 1
+        spec = scheduled.spec
         trial_index = completed_trials + 1
         attempt_index = attempt_counts.get(trial_index, 0) + 1
         attempt_counts[trial_index] = attempt_index
@@ -247,31 +323,39 @@ def run_constant_stimuli(
             fps=60,
             trace_attempt=trace_attempt,
         )
-        if result is None:
+        if isinstance(result, trial_module.TrialAborted):
+            data_logger.append_trial(
+                _trial_row(session_id, cfg, spec, trial_index, "aborted", result),
+                trial_path,
+            )
+            print(f"session aborted mid-trial ({result.reason})")
             return
         if isinstance(result, trial_module.TrialTimeout):
-            constant_stimuli.requeue_timed_out_trial(pending_trials, spec, cfg, rng)
+            requeued = constant_stimuli.defer_timed_out_trial(
+                scheduled, deferred_trials, cfg.max_trial_attempts
+            )
+            if not requeued:
+                exhausted_trials += 1
+                total_trials -= 1
+                print(
+                    f"trial exhausted after {scheduled.attempts} unanswered attempts "
+                    f"(level {spec.level_pct:+.1%})"
+                )
+            data_logger.append_trial(
+                _trial_row(
+                    session_id,
+                    cfg,
+                    spec,
+                    trial_index,
+                    "timeout" if requeued else "exhausted",
+                    result,
+                ),
+                trial_path,
+            )
             continue
 
         data_logger.append_trial(
-            {
-                "session_id": session_id,
-                "participant_id": cfg.participant_id,
-                "timestamp": result.timestamp,
-                "trial_index": result.trial_index,
-                "mode": cfg.mode,
-                "level_pct": f"{result.level_pct:.6f}",
-                "comparison_height_mm": f"{result.comparison_height_mm:.4f}",
-                "reference_height_mm": f"{result.reference_height_mm:.4f}",
-                "bar_width_mm": f"{result.bar_width_mm:.4f}",
-                "reference_side": result.reference_side,
-                "response": result.response,
-                "correct": int(result.correct),
-                "is_catch": int(result.is_catch),
-                "is_practice": int(result.is_practice),
-                "response_time_s": f"{result.response_time_s:.4f}",
-                "passes": result.passes,
-            },
+            _trial_row(session_id, cfg, spec, trial_index, "answered", result),
             trial_path,
         )
         completed_trials += 1
@@ -287,6 +371,8 @@ def run_constant_stimuli(
             ):
                 return
 
+    print(f"constant_stimuli complete: {completed_trials} answered, {exhausted_trials} exhausted")
+
 
 def run() -> int:
     args = parse_args()
@@ -298,9 +384,13 @@ def run() -> int:
 
     import pygame
 
-    from . import display, stimulus
+    from . import audio_cues, display, stimulus
 
     pygame.init()
+    # Synthesize the response/timeout cues now: building one costs tens of
+    # thousands of Python-level sine evaluations, which would drop frames if
+    # it happened lazily inside the first trial.
+    audio_cues.preload()
     clock = pygame.time.Clock()
     session_id, trial_path, summary_path, config_snapshot_path = _session_paths(cfg, participant)
 

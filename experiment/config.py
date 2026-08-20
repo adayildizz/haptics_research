@@ -74,6 +74,7 @@ class ExperimentConfig:
     n_practice_trials: int = 8
     break_every_n_trials: int = 30
     response_timeout_s: float = 30.0
+    max_trial_attempts: int = 3
     practice_voice_feedback: bool = True
     ideal_finger_speed_mm_s: float = 100.0
     ideal_speed_tolerance_pct: float = 0.30
@@ -110,6 +111,8 @@ class ExperimentConfig:
             raise ValueError("trials_per_level must be >= 1")
         if self.response_timeout_s <= 0:
             raise ValueError("response_timeout_s must be > 0")
+        if self.max_trial_attempts < 1:
+            raise ValueError("max_trial_attempts must be >= 1")
         if self.ideal_finger_speed_mm_s <= 0:
             raise ValueError("ideal_finger_speed_mm_s must be > 0")
         if not 0 <= self.ideal_speed_tolerance_pct < 1:

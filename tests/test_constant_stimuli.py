@@ -6,12 +6,15 @@ import pytest
 
 from experiment.config import ExperimentConfig
 from experiment.constant_stimuli import (
+    ScheduledTrial,
     build_practice_sequence,
+    build_schedule,
     build_trial_sequence,
     comparison_height_mm,
     compute_levels,
+    defer_timed_out_trial,
     resolve_seed,
-    requeue_timed_out_trial,
+    take_retry_round,
 )
 
 
@@ -120,25 +123,57 @@ def test_inter_bar_gap_below_minimum_rejected():
         _cfg(inter_bar_gap_mm=1.0)
 
 
-def test_timed_out_trial_is_requeued_without_reducing_total():
+def test_build_schedule_wraps_every_spec_with_zero_attempts():
     cfg = _cfg(delta_max_pct=0.30, n_levels=6, trials_per_level=2, catch_trial_pct=0)
-    trials = build_trial_sequence(cfg, seed=4)
-    timed_out = trials.pop(0)
-    original_total = len(trials) + 1
+    schedule = build_schedule(cfg, seed=4)
 
-    requeue_timed_out_trial(trials, timed_out, cfg, random.Random(7))
-
-    assert len(trials) == original_total
-    assert timed_out in trials
-    assert trials[0].comparison_height_mm != timed_out.comparison_height_mm
+    assert [item.spec for item in schedule] == build_trial_sequence(cfg, seed=4)
+    assert all(item.attempts == 0 for item in schedule)
 
 
-def test_last_timed_out_slot_gets_a_different_random_height():
+def test_timed_out_trial_is_deferred_until_the_attempt_cap():
+    scheduled = ScheduledTrial(build_trial_sequence(_cfg(), seed=4)[0])
+    deferred = []
+
+    scheduled.attempts = 1
+    assert defer_timed_out_trial(scheduled, deferred, max_attempts=3) is True
+    scheduled.attempts = 2
+    assert defer_timed_out_trial(scheduled, deferred, max_attempts=3) is True
+    scheduled.attempts = 3
+    assert defer_timed_out_trial(scheduled, deferred, max_attempts=3) is False
+
+    assert len(deferred) == 2
+
+
+def test_retry_round_drains_and_reshuffles_the_deferred_pool():
+    cfg = _cfg(delta_max_pct=0.30, n_levels=6, trials_per_level=4, catch_trial_pct=0)
+    deferred = build_schedule(cfg, seed=4)
+    original = list(deferred)
+
+    round_trials = take_retry_round(deferred, random.Random(7))
+
+    assert deferred == []
+    assert sorted(map(id, round_trials)) == sorted(map(id, original))
+    assert round_trials != original  # reshuffled, not replayed in timeout order
+
+
+def test_session_length_is_bounded_by_the_attempt_cap():
+    """A participant who never answers still terminates the block."""
     cfg = _cfg(delta_max_pct=0.30, n_levels=6, trials_per_level=2, catch_trial_pct=0)
-    timed_out = build_trial_sequence(cfg, seed=4)[0]
-    pending = []
+    max_attempts = 3
+    pending = build_schedule(cfg, seed=4)
+    scheduled_total = len(pending)
+    deferred = []
+    rng = random.Random(7)
 
-    requeue_timed_out_trial(pending, timed_out, cfg, random.Random(7))
+    presentations = 0
+    while pending or deferred:
+        if not pending:
+            pending = take_retry_round(deferred, rng)
+        item = pending.pop(0)
+        item.attempts += 1
+        presentations += 1
+        defer_timed_out_trial(item, deferred, max_attempts)
+        assert presentations <= scheduled_total * max_attempts
 
-    assert len(pending) == 1
-    assert pending[0].comparison_height_mm != timed_out.comparison_height_mm
+    assert presentations == scheduled_total * max_attempts
