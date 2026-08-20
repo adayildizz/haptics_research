@@ -17,8 +17,27 @@ One base (reference) height and one bar width are fixed per session (a "configur
 - `levels = linspace(-delta_max_pct, +delta_max_pct, n_levels)`, dropping the 0% level unless `include_zero_level` is set.
 - `comparison_height_mm = base_height_mm * (1 + level)`.
 - `trials_per_level` reps per level, plus `catch_trial_pct` extra easy (±`delta_max_pct`) trials as a lapse/attention check.
-- Reference/comparison side (left/right) is counterbalanced within each level.
-- All trials for a configuration are shuffled into one sequence using a seeded RNG; the seed actually used is always logged, even when `rng_seed` is left unset (a fresh one is drawn and recorded).
+- Reference/comparison side (left/right) is counterbalanced within each level, across the whole block rather than within each sub-block.
+- Trial order is randomized **within blocks**, not by one shuffle of the whole set. Each block holds `sweeps_per_block` presentations of every level (default 1, so blocks of `n_levels`), and order is shuffled inside the block. The seeded RNG makes this reproducible; the seed actually used is always logged, even when `rng_seed` is left unset (a fresh one is drawn and recorded).
+
+### Why blocked, not one global shuffle
+
+Both schemes give each level its configured number of trials and both are unbiased *on average*. The difference is what happens within a single session, which is what a threshold is estimated from. Measured over 2000 seeds of the default design (6 levels x 10 trials + 6 catch):
+
+| | one global shuffle | blocked (default) |
+| --- | --- | --- |
+| A level's trials split between first and second half | 4.6 apart on average, worst 10-0 | exactly even, always |
+| Sessions with a 4-6 split or worse | 84% | 0% |
+| Longest run of the same level | up to 6 | 2 |
+| Same level within a 10-trial window | up to 7 | 3 |
+| Four or more catch trials in one third of the session | 28% | 0% |
+| A third of the session with no catch trial at all | 23% | 5% |
+
+A session runs ~20 minutes, over which fatigue, learning, and the skin's coupling to the surface all drift. A global shuffle leaves level confounded with time-on-task by exactly that much, and the drift lands on the threshold estimate. Blocking removes the confound by construction and caps same-level runs at two (one at each side of a block boundary).
+
+Catch trials are placed one per block, at a random position inside it, for the same reason: sampling attention across the session works poorly if a quarter of sessions leave a third of the session unsampled.
+
+`sweeps_per_block: 2` gives blocks of 12 instead of 6. Balance is still exact and runs cap at 4; the trade is that with blocks of exactly one sweep the last trial of a block is in principle determined by the preceding five. That is not a realistic concern for a blindfolded 2AFC height judgment, but the wider block is there if a design wants it. `trials_per_level` must be divisible by `sweeps_per_block`.
 
 Both bars are rendered simultaneously on a split screen. Bar interior = signal ON, exterior = OFF.
 
@@ -146,6 +165,7 @@ delta_max_pct: 0.30
 n_levels: 6
 include_zero_level: false
 trials_per_level: 10
+sweeps_per_block: 1       # each block holds this many of every level
 catch_trial_pct: 0.10
 
 feedback: false

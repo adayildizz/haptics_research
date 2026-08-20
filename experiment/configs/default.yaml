@@ -11,6 +11,7 @@ delta_max_pct: 0.30
 n_levels: 6
 include_zero_level: false
 trials_per_level: 10
+sweeps_per_block: 1              # levels per block = n_levels * this; 1 -> blocks of 6
 catch_trial_pct: 0.10
 
 feedback: false

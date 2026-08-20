@@ -53,6 +53,7 @@ FIELD_GROUPS: list[tuple[str, list[tuple[str, str, str]]]] = [
         ("n_levels", "Seviye sayısı", "int"),
         ("include_zero_level", "0% seviyeyi dahil et", "bool"),
         ("trials_per_level", "Seviye başına deneme", "int"),
+        ("sweeps_per_block", "Blok başına tur (randomizasyon)", "int"),
         ("catch_trial_pct", "Kontrol deneme oranı", "float"),
     ]),
     ("Görev Ayarları", [
@@ -129,6 +130,12 @@ FIELD_HELP: dict[str, str] = {
     "(analysis/fit_psychometric.py) varsayılan olarak scipy MLE kullanıyor; bu yöntem az sayıda "
     "denemede daha savrulabilir olduğundan seviye başına en az birkaç, ideal olarak ~10 civarı "
     "deneme önerilir.",
+    "sweeps_per_block": "Deneme sırası, her seviyeden eşit sayıda içeren bloklar halinde karıştırılır; "
+    "bu alan bir blokta her seviyenin kaç kez geçeceğini belirler. 1 = blok başına her seviyeden 1 "
+    "(6 seviyede 6'lık bloklar), 2 = 12'lik bloklar. Tüm seti tek seferde karıştırmak seviyeyi "
+    "oturum içindeki zamana bağlı bırakıyordu: bir seviyenin denemeleri ilk/ikinci yarıya ortalama "
+    "4.6 farkla, en kötü 10-0 dağılabiliyordu. Bloklama bu farkı tanım gereği sıfırlar. "
+    "trials_per_level bu değere tam bölünmeli.",
     "catch_trial_pct": "En uç seviyelerde (±delta_max_pct) eklenen ekstra 'kolay' kontrol denemesi "
     "oranı; katılımcının dikkatini/lapse oranını ölçmek içindir. Standart bir dikkat kontrolü "
     "pratiğidir, belirli bir referansa dayanmıyor.",

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import collections
 import random
 
 import pytest
@@ -177,3 +178,73 @@ def test_session_length_is_bounded_by_the_attempt_cap():
         assert presentations <= scheduled_total * max_attempts
 
     assert presentations == scheduled_total * max_attempts
+
+
+def test_every_block_holds_each_level_the_same_number_of_times():
+    """Blocking is what keeps level from drifting with time-on-task."""
+    cfg = _cfg(delta_max_pct=0.30, n_levels=6, trials_per_level=10, catch_trial_pct=0)
+    levels = compute_levels(cfg)
+    block_size = len(levels) * cfg.sweeps_per_block
+
+    sequence = build_trial_sequence(cfg, seed=4)
+
+    for start in range(0, len(sequence), block_size):
+        block = sequence[start:start + block_size]
+        counts = collections.Counter(round(t.level_pct, 6) for t in block)
+        assert counts == {round(l, 6): cfg.sweeps_per_block for l in levels}
+
+
+def test_level_counts_and_side_balance_survive_blocking():
+    cfg = _cfg(delta_max_pct=0.30, n_levels=6, trials_per_level=10, catch_trial_pct=0)
+    levels = compute_levels(cfg)
+
+    sequence = build_trial_sequence(cfg, seed=4)
+
+    by_level = collections.Counter(round(t.level_pct, 6) for t in sequence)
+    assert by_level == {round(l, 6): 10 for l in levels}
+    for level in levels:
+        sides = [t.reference_side for t in sequence if abs(t.level_pct - level) < 1e-9]
+        assert sides.count("left") == sides.count("right") == 5
+
+
+def test_each_half_of_the_block_gets_the_same_level_counts():
+    """A single global shuffle put up to all 10 of a level's trials in one half."""
+    cfg = _cfg(delta_max_pct=0.30, n_levels=6, trials_per_level=10, catch_trial_pct=0)
+
+    for seed in range(50):
+        sequence = build_trial_sequence(cfg, seed)
+        half = len(sequence) // 2
+        first = collections.Counter(round(t.level_pct, 6) for t in sequence[:half])
+        second = collections.Counter(round(t.level_pct, 6) for t in sequence[half:])
+        assert first == second
+
+
+def test_catch_trials_are_spread_across_blocks():
+    cfg = _cfg(delta_max_pct=0.30, n_levels=6, trials_per_level=10, catch_trial_pct=0.10)
+    block_size = len(compute_levels(cfg)) * cfg.sweeps_per_block
+
+    sequence = build_trial_sequence(cfg, seed=4)
+    catch_positions = [i for i, t in enumerate(sequence) if t.is_catch]
+
+    assert len(catch_positions) == 6
+    # No block may take more than one, so they cannot bunch up in one stretch.
+    blocks_used = [p // (block_size + 1) for p in catch_positions]
+    assert len(set(blocks_used)) == len(blocks_used)
+
+
+def test_wider_blocks_stay_balanced():
+    cfg = _cfg(delta_max_pct=0.30, n_levels=6, trials_per_level=10, sweeps_per_block=2,
+               catch_trial_pct=0)
+    levels = compute_levels(cfg)
+
+    sequence = build_trial_sequence(cfg, seed=4)
+
+    block_size = len(levels) * 2
+    for start in range(0, len(sequence), block_size):
+        counts = collections.Counter(round(t.level_pct, 6) for t in sequence[start:start + block_size])
+        assert counts == {round(l, 6): 2 for l in levels}
+
+
+def test_block_size_must_divide_the_trial_count():
+    with pytest.raises(ValueError, match="divisible"):
+        _cfg(trials_per_level=10, sweeps_per_block=3)
