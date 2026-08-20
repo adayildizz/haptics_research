@@ -122,7 +122,7 @@ def run_staircase_pilot(
             is_catch=False,
             is_practice=False,
         )
-        result = trial_module.run_trial(screen, clock, calibration, instrument, cfg, spec, trial_index, fps=60)
+        result = trial_module.run_trial(screen, clock, calibration, instrument, cfg, spec, trial_index, fps=cfg.render_fps)
         if isinstance(result, trial_module.TrialAborted):
             return
         if isinstance(result, trial_module.TrialTimeout):
@@ -273,7 +273,7 @@ def run_constant_stimuli(
                     cfg,
                     scheduled.spec,
                     shown,
-                    fps=60,
+                    fps=cfg.render_fps,
                     speed_coach=speed_coach,
                     trace_attempt=practice_trace,
                 )
@@ -348,7 +348,7 @@ def run_constant_stimuli(
             cfg,
             spec,
             trial_index,
-            fps=60,
+            fps=cfg.render_fps,
             trace_attempt=trace_attempt,
         )
         if isinstance(result, trial_module.TrialAborted):

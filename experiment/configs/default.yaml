@@ -23,6 +23,7 @@ ideal_finger_speed_mm_s: 100.0  # 10 cm/s
 ideal_speed_tolerance_pct: 0.30 # accepted band: 70-130 mm/s
 record_main_trace: true
 
+render_fps: 60                   # trial-loop rate; also the signal gate's resolution
 carrier_freq_hz: 125.0
 voltage_peak: 4.0
 ir_sample_hz_nominal: 100.0

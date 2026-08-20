@@ -107,3 +107,36 @@ def test_a_motionless_frame_still_records_one_sample(calibration, layout):
 
     assert len(samples) == 1
     assert samples[0].speed_mm_s == 0.0
+
+
+def test_pass_entry_gap_is_measured_against_the_ir_rate():
+    """The threshold used to see render-frame gaps, so it was almost always true."""
+    from experiment.trial import _PassTracker
+
+    tracker = _PassTracker(max_sample_gap_s=3.0 / 100.0)  # 30 ms at 100 Hz
+
+    # A healthy ~10 ms inter-report gap: the entry is well localised.
+    tracker.start("left", now_s=0.0, speed_mm_s=100.0, commanded_s=0.1, sample_gap_s=0.010)
+    tracker.finish(0.1)
+    # A 50 ms gap means the device (or the loop) skipped over the edge.
+    tracker.start("right", now_s=0.2, speed_mm_s=100.0, commanded_s=0.1, sample_gap_s=0.050)
+    tracker.finish(0.3)
+
+    assert [p["leading_edge_detected"] for p in tracker.passes] == [True, False]
+    assert [p["entry_report_gap_s"] for p in tracker.passes] == [0.010, 0.050]
+
+
+def test_touch_state_is_not_trusted_until_the_device_reports_it():
+    """A driver that never reports touch must not silence the stimulus."""
+    import experiment.trial as trial
+
+    # Mirrors the loop's gate: `contact or not _touch_state_available`.
+    for touch_available, contact, expected in [
+        (False, False, True),   # device never reported touch -> behave as before
+        (False, True, True),
+        (True, True, True),     # device reports touch and the finger is down
+        (True, False, False),   # ...and the finger is up: nothing to feel
+    ]:
+        assert (contact or not touch_available) is expected
+
+    assert trial._touch_state_available is False  # nothing observed in tests

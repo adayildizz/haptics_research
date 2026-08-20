@@ -84,6 +84,7 @@ class ExperimentConfig:
     blind_test_mode: bool = False  # hide the bars/columns entirely; find them by touch only
 
     # Rendering / hardware
+    render_fps: int = 60
     carrier_freq_hz: float = 125.0
     voltage_peak: float = 4.0
     ir_sample_hz_nominal: float = 100.0
@@ -113,6 +114,8 @@ class ExperimentConfig:
             raise ValueError("response_timeout_s must be > 0")
         if self.max_trial_attempts < 1:
             raise ValueError("max_trial_attempts must be >= 1")
+        if self.render_fps < 1:
+            raise ValueError("render_fps must be >= 1")
         if self.ideal_finger_speed_mm_s <= 0:
             raise ValueError("ideal_finger_speed_mm_s must be > 0")
         if not 0 <= self.ideal_speed_tolerance_pct < 1:

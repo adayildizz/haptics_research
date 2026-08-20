@@ -69,6 +69,11 @@ class TrialTimeout:
 
 
 _contact_warning_printed = False
+# Set once the device is seen reporting a finger down. Until then the touch
+# state is not trusted for anything behavioural: a driver that never reports
+# it would otherwise read as "the finger is never on the glass" and silence
+# the stimulus for the whole session.
+_touch_state_available = False
 
 
 def _warn_if_touch_state_missing(contact_ever_reported: bool) -> None:
@@ -151,7 +156,13 @@ def should_time_out(elapsed_s: float, timeout_s: float) -> bool:
 
 
 class _PassTracker:
-    """Tracks per-bar-crossing ("pass") rendering fidelity within a trial."""
+    """Tracks per-bar-crossing ("pass") rendering fidelity within a trial.
+
+    ``max_sample_gap_s`` is compared against the gap between *input reports*.
+    It used to be handed the gap between rendered frames, which at 60 Hz is
+    16.7 ms against a 30 ms threshold -- so the flag was structurally almost
+    always true and was really reporting render hitches, not IR dropouts.
+    """
 
     def __init__(self, max_sample_gap_s: float) -> None:
         self.max_sample_gap_s = max_sample_gap_s
@@ -160,6 +171,7 @@ class _PassTracker:
         self.start_s = 0.0
         self.commanded_s = 0.0
         self.entry_speed_mm_s = 0.0
+        self.entry_gap_s = 0.0
         self.leading_edge_detected = True
 
     def start(self, side: str, now_s: float, speed_mm_s: float, commanded_s: float, sample_gap_s: float) -> None:
@@ -168,6 +180,7 @@ class _PassTracker:
         self.start_s = now_s
         self.commanded_s = commanded_s
         self.entry_speed_mm_s = speed_mm_s
+        self.entry_gap_s = sample_gap_s
         self.leading_edge_detected = sample_gap_s <= self.max_sample_gap_s
 
     def finish(self, now_s: float) -> None:
@@ -180,6 +193,7 @@ class _PassTracker:
                 "commanded_duration_s": self.commanded_s,
                 "actual_duration_s": actual_s,
                 "finger_speed_mm_s": self.entry_speed_mm_s,
+                "entry_report_gap_s": self.entry_gap_s,
                 "leading_edge_detected": self.leading_edge_detected,
             }
         )
@@ -234,8 +248,11 @@ def run_trial(
     # silence the stimulus entirely. It is recorded so the rig can be checked
     # first; without it a lifted finger is indistinguishable from a finger
     # held still, since the cursor keeps returning its last position.
+    global _touch_state_available
     contact = bool(pygame.mouse.get_pressed()[0])
     contact_ever_reported = contact
+    _touch_state_available = _touch_state_available or contact
+    previous_contact = contact
     previous_side: str | None = None
     previous_signal_on = False
     trace_sequence = 0
@@ -259,6 +276,7 @@ def run_trial(
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 contact = True
                 contact_ever_reported = True
+                _touch_state_available = True
                 continue
             if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
                 contact = False
@@ -388,7 +406,9 @@ def run_trial(
 
         if motion:
             contact = motion[-1][1]
-            contact_ever_reported = contact_ever_reported or any(down for _, down in motion)
+            if any(down for _, down in motion):
+                contact_ever_reported = True
+                _touch_state_available = True
         pos = pygame.mouse.get_pos()
         elapsed = max(now - last_time, 1e-6)
         dx = (pos[0] - last_pos[0]) / calibration.px_per_mm_x
@@ -403,10 +423,18 @@ def run_trial(
                 in_active_area=layout.haptic_area.collidepoint(pos),
             )
 
-        active_side = _side_for_pos(pos, layout)
+        # A lifted finger reports no new position, so the cursor keeps sitting
+        # where it was -- which used to read as "still over the bar". Only
+        # trust that once the device has actually been seen reporting touch.
+        finger_down = contact or not _touch_state_available
+        active_side = _side_for_pos(pos, layout) if finger_down else None
+        # The gap between input reports, not between rendered frames: this is
+        # what decides whether the crossing point is well localised, so it has
+        # to be measured against the device's rate, not the loop's.
+        report_gap_s = elapsed / len(motion) if motion else elapsed
         if active_side is not None and active_side != previous_side:
             commanded_s = stimulus.stimulus_duration(cfg.bar_width_mm, speed_mm_s)
-            tracker.start(active_side, now, speed_mm_s, commanded_s, elapsed)
+            tracker.start(active_side, now, speed_mm_s, commanded_s, report_gap_s)
         elif active_side is None and previous_side is not None:
             tracker.finish(now)
 
@@ -415,6 +443,11 @@ def run_trial(
             # regardless of the timed pulse, so dwelling doesn't cut it off early.
             stimulus.signal_on(instrument)
             signal_on = True
+        elif not finger_down:
+            # Finger is off the glass: there is nothing to feel, so no timed
+            # pulse should keep running against a stale position.
+            stimulus.signal_off(instrument)
+            signal_on = False
         else:
             # Finger just left the bar's rectangle: honor any still-running timed
             # pulse from the entry speed, so fast/narrow crossings the position
@@ -449,7 +482,14 @@ def run_trial(
                     event_type="signal_on" if signal_on else "signal_off",
                     payload={"active_side": active_side},
                 )
+            if contact != previous_contact and _touch_state_available:
+                trace_attempt.add_event(
+                    t_us=t_us,
+                    event_type="contact_down" if contact else "contact_up",
+                    payload={"active_side": active_side},
+                )
         previous_signal_on = signal_on
+        previous_contact = contact
 
         display.draw_trial(
             screen,

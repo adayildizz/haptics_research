@@ -103,6 +103,25 @@ def make_trial_layout(
     )
 
 
+_font_cache: dict[tuple[int, bool], pygame.font.Font] = {}
+
+
+def font(size: int, *, bold: bool = False) -> pygame.font.Font:
+    """Return a cached font.
+
+    ``SysFont`` does a font-file lookup on every call, and ``draw_trial``
+    used to build three of them per rendered frame. At 60 Hz that is wasted
+    work inside the trial loop; at any higher ``render_fps`` it is the first
+    thing that stops the loop from meeting its frame budget.
+    """
+    key = (size, bold)
+    cached = _font_cache.get(key)
+    if cached is None:
+        cached = pygame.font.SysFont("Arial", size, bold=bold)
+        _font_cache[key] = cached
+    return cached
+
+
 def draw_trial(
     screen: pygame.Surface,
     layout: TrialLayout,
@@ -133,9 +152,9 @@ def draw_trial(
         pygame.draw.rect(screen, PANEL_ACTIVE if active_side == "right" else PANEL, right_panel)
         pygame.draw.line(screen, DIVIDER, (width // 2, 72), (width // 2, height - 60), 2)
 
-    title_font = pygame.font.SysFont("Arial", 30, bold=True)
-    label_font = pygame.font.SysFont("Arial", 24, bold=True)
-    body_font = pygame.font.SysFont("Arial", 20)
+    title_font = font(30, bold=True)
+    label_font = font(24, bold=True)
+    body_font = font(20)
 
     title = title_font.render("Which bar is taller?", True, TEXT)
     screen.blit(title, title.get_rect(center=(width // 2, 34)))
@@ -172,18 +191,18 @@ def draw_trial(
 
 def draw_feedback(screen: pygame.Surface, correct: bool) -> None:
     width, height = screen.get_size()
-    font = pygame.font.SysFont("Arial", 36, bold=True)
+    feedback_font = font(36, bold=True)
     color = FEEDBACK_CORRECT if correct else FEEDBACK_INCORRECT
-    text = font.render("Correct" if correct else "Incorrect", True, color)
+    text = feedback_font.render("Correct" if correct else "Incorrect", True, color)
     screen.blit(text, text.get_rect(center=(width // 2, height // 2)))
 
 
 def draw_break(screen: pygame.Surface, message: str) -> None:
     screen.fill(BACKGROUND)
-    font = pygame.font.SysFont("Arial", 30, bold=True)
-    subfont = pygame.font.SysFont("Arial", 22)
-    text = font.render(message, True, TEXT)
-    hint = subfont.render(f"Press {CONTINUE_LABEL} to continue, or {EXIT_LABEL} to exit.", True, MUTED)
+    title_font = font(30, bold=True)
+    hint_font = font(22)
+    text = title_font.render(message, True, TEXT)
+    hint = hint_font.render(f"Press {CONTINUE_LABEL} to continue, or {EXIT_LABEL} to exit.", True, MUTED)
     screen.blit(text, text.get_rect(center=(screen.get_width() // 2, screen.get_height() // 2 - 24)))
     screen.blit(hint, hint.get_rect(center=(screen.get_width() // 2, screen.get_height() // 2 + 24)))
     pygame.display.flip()

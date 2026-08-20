@@ -219,6 +219,15 @@ worker thread, so the real-time trial loop never performs disk I/O. The trace is
 intended for the offline replay and video-export tools; those tools do not run
 during an experiment.
 
+**Loop rate vs. sample rate.** These are now separate. `render_fps` (default 60)
+paces the trial loop, and because the signal ON/OFF decision is made once per
+iteration it is also the resolution of the signal gate: one iteration at 60 Hz is
+16.7 ms, about 1.7 mm of travel at the target 100 mm/s, on top of the IR frame's
+own ~10 ms that no loop rate can remove. Raising it shortens the gate latency; it
+does **not** improve the movement trace, which already runs at the device rate.
+Measure `frame_dt_us` on the real rig before raising it — a loop that cannot
+already meet its 60 Hz budget will only fall further behind at 120.
+
 **Sample rate.** One sample is written per *input report*, not per rendered
 frame. The trial loop drains the SDL event queue every frame anyway; reading the
 `MOUSEMOTION` events instead of discarding them and calling `mouse.get_pos()`
@@ -232,16 +241,29 @@ bounded by one frame and each sample's `frame_dt_us` records its own slice.
 glass. Without it a lifted finger is indistinguishable from one held still — the
 cursor keeps reporting its last position — so exploration traces cannot be split
 into strokes, and a pass left open by a lift inflates its recorded duration.
-Nothing gates the electroadhesion signal on this yet; that still keys off
-position alone, because a driver that never reports touch state would otherwise
-silence the stimulus entirely. The trial loop prints a warning when no touch-down
-is ever seen, so the rig can be checked before acting on the column.
+Contact transitions are also written to the timeline as `contact_up` /
+`contact_down` events.
+
+A lifted finger now closes the current pass and drops the signal, instead of a
+timed pulse continuing to run against a stale position. That behaviour is gated
+on the device having actually been *seen* reporting a finger down at least once:
+until then touch state is ignored and the loop behaves exactly as it did before,
+because a driver that never reports it would otherwise read as "the finger is
+never on the glass" and silence the stimulus for the whole session. The loop
+prints a warning when no touch-down is ever seen, so the rig can be checked.
 
 **Practice attempts** carry `is_practice = 1` and negative `trial_index` values.
 `attempts` is `UNIQUE (session_id, trial_index, attempt_index)`, so practice
 trial 1 and main-block trial 1 would otherwise collide; negative also reads
 correctly, since practice comes first. Attempts load ordered by `started_us`
 rather than `trial_index` for that reason.
+
+**Pass fidelity.** `passes_json` records `entry_report_gap_s`, the measured gap
+between the input reports that bracket a bar crossing, alongside the
+`leading_edge_detected` verdict (`entry_report_gap_s <= 3 / ir_sample_hz_nominal`).
+The verdict previously compared against the gap between *rendered frames*, which
+at 60 Hz is 16.7 ms against a 30 ms threshold — so it was structurally almost
+always true, and was really reporting render hitches rather than IR dropouts.
 
 Schema-1 recordings keep working. `TraceStore` adds the two new columns in place
 when it opens an older database, and the replay reader — which opens traces

@@ -69,6 +69,7 @@ FIELD_GROUPS: list[tuple[str, list[tuple[str, str, str]]]] = [
         ("blind_test_mode", "Kör test modu (çubukları gösterme)", "bool"),
     ]),
     ("Donanım / İşleme", [
+        ("render_fps", "Deneme döngüsü hızı (FPS)", "int"),
         ("carrier_freq_hz", "Taşıyıcı frekans (Hz)", "float"),
         ("voltage_peak", "Tepe voltaj (Vpp)", "float"),
         ("ir_sample_hz_nominal", "IR frame örnekleme (Hz)", "float"),
@@ -159,6 +160,13 @@ FIELD_HELP: dict[str, str] = {
     "(konumlarını bulmak kör bir arama olmasın diye), ama şeritlerin içindeki gerçek yükseklik "
     "çubukları hiç çizilmez -- yükseklik test edilen şey olduğu için ekrandan okunamamalı, sadece "
     "dokunarak/hissederek karşılaştırılmalı. Dokunma algılama ve sinyal mantığını etkilemez.",
+    "render_fps": "Deneme döngüsünün saniyedeki tur sayısı. Sinyalin açılıp kapanma kararı tur "
+    "başına bir kez verildiği için bu değer aynı zamanda sinyal kapısının çözünürlüğü: 60'ta bir tur "
+    "16.7 ms, yani 100 mm/s'de ~1.7 mm; 120'de yarısı. IR çerçevenin ~10 ms'lik payı buna eklenir ve "
+    "aşağı inmez. Hareket kaydı bu değerden bağımsız olarak cihaz hızında tutulur (her IR raporu "
+    "kaydedilir), dolayısıyla artırmanın kazancı kayıt çözünürlüğü değil kapı gecikmesidir. "
+    "Artırmadan önce gerçek rigde frame_dt_us dağılımına bakın: döngü 60'ı zaten tutturamıyorsa "
+    "120 istemek durumu kötüleştirir.",
     "carrier_freq_hz": "Elektroadhezyon sinyalinin taşıyıcı frekansı. Bu bir tasarım parametresi değil, "
     "rig'in donanım özelliği -- README'deki donanım tablosunda '125 Hz carrier frequency' olarak "
     "belirtiliyor.",
@@ -166,9 +174,11 @@ FIELD_HELP: dict[str, str] = {
     "peak' rig özelliğiyle eşleşir. UYARI: 50x amplifikatörle çarpılınca dokunma yüzeyinde ~100V'a "
     "çıkıyor -- yükseltmeden önce README'nin güvenlik notunu okuyun.",
     "ir_sample_hz_nominal": "IR çerçevenin nominal örnekleme hızı; README'de belirtilen Nexio "
-    "NIB170BP donanımının spesifikasyonu (~100 Hz), bir tasarım tercihi değil. Yazılım tabanlı "
-    "zamanlamanın (perf_counter) bu sınırlamayı nasıl aştığı README'nin 'Rendering Method' "
-    "bölümünde anlatılıyor.",
+    "NIB170BP donanımının spesifikasyonu (~100 Hz). Kodda tek bir yeri etkiler: bir çubuk geçişinin "
+    "giriş kenarının güvenilir yakalanıp yakalanmadığına karar veren eşik (3 / bu değer, "
+    "varsayılanda 30 ms). Ardışık girdi raporları arasındaki ölçülen boşluk bu eşiği aşarsa geçiş "
+    "trace'te leading_edge_detected=false olarak işaretlenir; ham boşluk da entry_report_gap_s "
+    "olarak yazılır. Örnekleme hızını kendisi belirlemez -- onu donanım belirler.\n",
     "rng_seed": "Deneme sırasını karıştıran rastgele sayı üreteci tohumu. Boş bırakılırsa rastgele "
     "bir tohum seçilir; gerçekleşen tohum yine de tekrarlanabilirlik için config snapshot'ına "
     "kaydedilir.",
