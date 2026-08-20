@@ -199,9 +199,9 @@ def run_trial(
                             trace_attempt.add_event(
                                 t_us=t_us,
                                 event_type="signal_off",
-                                payload={"reason": "numpad_0"},
+                                payload={"reason": "exit_key"},
                             )
-                        trace_attempt.add_event(t_us=t_us, event_type="aborted", payload={"reason": "numpad_0"})
+                        trace_attempt.add_event(t_us=t_us, event_type="aborted", payload={"reason": "exit_key"})
                         trace_attempt.finish(
                             ended_us=trace_attempt.session_elapsed_us(),
                             outcome="aborted",

@@ -4,18 +4,36 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-CONTINUE_LABEL = "SPACE / ENTER / NUMPAD ENTER"
-EXIT_LABEL = "ESC / NUMPAD 0"
+CONTINUE_LABEL = "SPACE / ENTER"
+EXIT_LABEL = "ESC"
 LEFT_LABEL = "LEFT ARROW / NUMPAD 4"
 RIGHT_LABEL = "RIGHT ARROW / NUMPAD 6"
 
 
 def is_continue_key(key: int, pygame_module: Any) -> bool:
-    return key in (pygame_module.K_SPACE, pygame_module.K_RETURN, pygame_module.K_KP_ENTER)
+    """Space and the main keyboard's Enter. Not numpad Enter.
+
+    Numpad Enter sits directly below the response keys -- on most keyboards
+    it is the tall key under 6 -- so a participant reaching for a response
+    by touch can hit it. It does nothing during a trial, but it advances
+    the break and start screens, which are the supervisor's to advance.
+    Between this and Escape-only exit, the numpad now carries exactly two
+    live keys: 4 and 6.
+    """
+    return key in (pygame_module.K_SPACE, pygame_module.K_RETURN)
 
 
 def is_exit_key(key: int, pygame_module: Any) -> bool:
-    return key in (pygame_module.K_ESCAPE, pygame_module.K_KP0)
+    """Escape only, on the main keyboard.
+
+    Numpad 0 used to exit as well, which put the abort key directly under
+    the hand a participant is already using: the response keys are numpad 4
+    and 6, found by touch from the nub on 5, and 0 is the wide key on the
+    row below them. A blindfolded participant reaching for a response can
+    land on it and end the session. Escape is across the keyboard, out of
+    reach of that hand, and is the supervisor's key anyway.
+    """
+    return key == pygame_module.K_ESCAPE
 
 
 def response_for_key(key: int, pygame_module: Any) -> Literal["left", "right"] | None:
