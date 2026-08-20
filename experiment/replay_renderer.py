@@ -108,8 +108,9 @@ def _draw_overlay(surface, session, attempt, state, t_us: int, viewport: pygame.
     pygame.font.init()
     title_font = pygame.font.SysFont("Arial", 24, bold=True)
     body_font = pygame.font.SysFont("Arial", 18)
+    label = f"Practice {abs(attempt.trial_index)}" if attempt.is_practice else f"Trial {attempt.trial_index}"
     title = title_font.render(
-        f"Trial {attempt.trial_index}  •  Attempt {attempt.attempt_index}  •  {attempt.outcome or 'open'}",
+        f"{label}  •  Attempt {attempt.attempt_index}  •  {attempt.outcome or 'open'}",
         True,
         TEXT,
     )

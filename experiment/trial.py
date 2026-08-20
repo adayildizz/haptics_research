@@ -68,6 +68,77 @@ class TrialTimeout:
     timestamp: str = ""
 
 
+_contact_warning_printed = False
+
+
+def _warn_if_touch_state_missing(contact_ever_reported: bool) -> None:
+    """Say so, once per session, if the device never reports a finger down.
+
+    The ``contact`` column is only meaningful on a driver that emits touch
+    (or emulated mouse-button) state. On one that does not, the column is
+    uniformly ``False`` and would silently look like "the participant never
+    touched anything" -- so make the absence explicit instead.
+    """
+    global _contact_warning_printed
+    if contact_ever_reported or _contact_warning_printed:
+        return
+    _contact_warning_printed = True
+    print(
+        "WARNING: no touch-down reported by the input device; the trace's "
+        "'contact' column will be uniformly false and cannot be used to tell "
+        "a lifted finger from a stationary one."
+    )
+
+
+def frame_samples(
+    reports: list[tuple[tuple[int, int], bool]],
+    *,
+    first_sequence: int,
+    previous_pos: tuple[int, int],
+    previous_t: float,
+    frame_end_t: float,
+    trial_start: float,
+    calibration: DisplayCalibration,
+    layout: display.TrialLayout,
+    signal_on: bool,
+) -> list[CursorSample]:
+    """Turn one frame's worth of input reports into cursor samples.
+
+    ``reports`` is every ``(position, finger_down)`` the device delivered
+    since the previous frame -- one per IR update, not one per rendered
+    frame. pygame does not expose SDL's per-event timestamp, so the frame
+    interval is divided evenly between the reports: the error is bounded by
+    one frame, and ``frame_dt_us`` on each sample keeps it auditable. Speed
+    and side are recomputed between consecutive reports rather than reused
+    from the frame, which is the point of sampling them separately.
+    """
+    samples: list[CursorSample] = []
+    count = len(reports)
+    for index, (pos, contact) in enumerate(reports, start=1):
+        t = previous_t + (frame_end_t - previous_t) * index / count
+        dt = max(t - previous_t, 1e-6)
+        dx = (pos[0] - previous_pos[0]) / calibration.px_per_mm_x
+        dy = (pos[1] - previous_pos[1]) / calibration.px_per_mm_y
+        samples.append(
+            CursorSample(
+                sequence=first_sequence + index - 1,
+                t_us=round((t - trial_start) * 1_000_000),
+                frame_dt_us=round(dt * 1_000_000),
+                x_px=pos[0],
+                y_px=pos[1],
+                x_mm=(pos[0] - calibration.active_left_px) / calibration.px_per_mm_x,
+                y_mm=(pos[1] - calibration.active_top_px) / calibration.px_per_mm_y,
+                speed_mm_s=((dx * dx + dy * dy) ** 0.5) / dt,
+                in_active_area=layout.haptic_area.collidepoint(pos),
+                active_side=_side_for_pos(pos, layout),
+                signal_on=signal_on,
+                contact=contact,
+            )
+        )
+        previous_pos, previous_t = pos, t
+    return samples
+
+
 def should_time_out(elapsed_s: float, timeout_s: float) -> bool:
     """Every trial, practice included, uses the configured response limit.
 
@@ -158,6 +229,13 @@ def run_trial(
     trial_start = time.perf_counter()
     last_pos = pygame.mouse.get_pos()
     last_time = trial_start
+    # Touch state. Nothing here gates the signal -- that still keys off
+    # position alone -- because a driver that never reports touch would then
+    # silence the stimulus entirely. It is recorded so the rig can be checked
+    # first; without it a lifted finger is indistinguishable from a finger
+    # held still, since the cursor keeps returning its last position.
+    contact = bool(pygame.mouse.get_pressed()[0])
+    contact_ever_reported = contact
     previous_side: str | None = None
     previous_signal_on = False
     trace_sequence = 0
@@ -169,7 +247,22 @@ def run_trial(
 
     while True:
         now = time.perf_counter()
+        # (position, finger-down) for every input report that arrived since the
+        # last frame. The event queue is drained here either way; reading the
+        # motion events instead of dropping them is what keeps the trace at the
+        # IR frame's rate rather than the render loop's.
+        motion: list[tuple[tuple[int, int], bool]] = []
         for event in pygame.event.get():
+            if event.type == pygame.MOUSEMOTION:
+                motion.append((event.pos, bool(event.buttons[0])))
+                continue
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                contact = True
+                contact_ever_reported = True
+                continue
+            if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+                contact = False
+                continue
             if event.type == pygame.QUIT:
                 stimulus.signal_off(instrument)
                 tracker.finish(now)
@@ -257,6 +350,7 @@ def run_trial(
                             response=response,
                             response_time_us=t_us,
                         )
+                    _warn_if_touch_state_missing(contact_ever_reported)
                     if cfg.feedback or spec.is_practice:
                         display.draw_feedback(screen, correct)
                         pygame.display.flip()
@@ -285,12 +379,16 @@ def run_trial(
                     ended_us=trace_attempt.session_elapsed_us(),
                     outcome="timeout",
                 )
+            _warn_if_touch_state_missing(contact_ever_reported)
             return TrialTimeout(
                 elapsed_s=elapsed_trial_s,
                 passes=tracker.passes,
                 timestamp=time.strftime("%Y-%m-%dT%H:%M:%S"),
             )
 
+        if motion:
+            contact = motion[-1][1]
+            contact_ever_reported = contact_ever_reported or any(down for _, down in motion)
         pos = pygame.mouse.get_pos()
         elapsed = max(now - last_time, 1e-6)
         dx = (pos[0] - last_pos[0]) / calibration.px_per_mm_x
@@ -330,22 +428,21 @@ def run_trial(
 
         if trace_attempt is not None:
             t_us = round(elapsed_trial_s * 1_000_000)
-            trace_attempt.add_sample(
-                CursorSample(
-                    sequence=trace_sequence,
-                    t_us=t_us,
-                    frame_dt_us=round(elapsed * 1_000_000),
-                    x_px=pos[0],
-                    y_px=pos[1],
-                    x_mm=(pos[0] - calibration.active_left_px) / calibration.px_per_mm_x,
-                    y_mm=(pos[1] - calibration.active_top_px) / calibration.px_per_mm_y,
-                    speed_mm_s=speed_mm_s,
-                    in_active_area=layout.haptic_area.collidepoint(pos),
-                    active_side=active_side,
-                    signal_on=signal_on,
-                )
-            )
-            trace_sequence += 1
+            # With no motion at all, one sample still records that the finger
+            # stayed where it was.
+            for sample in frame_samples(
+                motion or [(pos, contact)],
+                first_sequence=trace_sequence,
+                previous_pos=last_pos,
+                previous_t=last_time,
+                frame_end_t=now,
+                trial_start=trial_start,
+                calibration=calibration,
+                layout=layout,
+                signal_on=signal_on,
+            ):
+                trace_attempt.add_sample(sample)
+                trace_sequence += 1
             if signal_on != previous_signal_on:
                 trace_attempt.add_event(
                     t_us=t_us,

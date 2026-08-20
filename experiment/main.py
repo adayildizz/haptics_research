@@ -238,6 +238,33 @@ def run_constant_stimuli(
                 scheduled = practice_pending.pop(0)
                 scheduled.attempts += 1
                 shown += 1
+                practice_trace = None
+                if trace_recorder is not None:
+                    from .trace_store import AttemptDefinition
+
+                    practice_trace = trace_recorder.start_attempt(
+                        f"practice:{shown}",
+                        AttemptDefinition(
+                            session_id=session_id,
+                            # Negative slot numbers for practice. The attempts
+                            # table is UNIQUE on (session_id, trial_index,
+                            # attempt_index), so practice trial 1 and main-block
+                            # trial 1 would otherwise collide and the second one
+                            # would be dropped. Negative also reads correctly:
+                            # these come before the main block. ``is_practice``
+                            # remains the flag to test against.
+                            trial_index=-shown,
+                            attempt_index=scheduled.attempts,
+                            started_us=trace_recorder.elapsed_us(),
+                            level_pct=scheduled.spec.level_pct,
+                            comparison_height_mm=scheduled.spec.comparison_height_mm,
+                            reference_height_mm=scheduled.spec.reference_height_mm,
+                            bar_width_mm=cfg.bar_width_mm,
+                            reference_side=scheduled.spec.reference_side,
+                            is_catch=scheduled.spec.is_catch,
+                            is_practice=True,
+                        ),
+                    )
                 result = trial_module.run_trial(
                     screen,
                     clock,
@@ -248,6 +275,7 @@ def run_constant_stimuli(
                     shown,
                     fps=60,
                     speed_coach=speed_coach,
+                    trace_attempt=practice_trace,
                 )
                 if isinstance(result, trial_module.TrialAborted):
                     outcome = "aborted"

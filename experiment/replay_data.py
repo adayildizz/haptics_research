@@ -23,6 +23,7 @@ class ReplaySample:
     in_active_area: bool
     active_side: str | None
     signal_on: bool
+    contact: bool = True
 
 
 @dataclass(frozen=True)
@@ -57,6 +58,7 @@ class ReplayAttempt:
     bar_width_mm: float
     reference_side: str
     is_catch: bool
+    is_practice: bool
     outcome: str | None
     response: str | None
     response_time_us: int | None
@@ -131,6 +133,10 @@ class ReplaySession:
     attempts: tuple[ReplayAttempt, ...]
 
 
+def _has_column(connection: sqlite3.Connection, table: str, column: str) -> bool:
+    return any(row[1] == column for row in connection.execute(f"PRAGMA table_info({table})"))
+
+
 def load_trace(path: str | Path) -> ReplaySession:
     """Load one trace database without modifying it."""
     trace_path = Path(path).resolve()
@@ -148,23 +154,34 @@ def load_trace(path: str | Path) -> ReplaySession:
         if session_row is None:
             raise ValueError(f"trace has no session row: {trace_path}")
 
+        # The trace is opened read-only, so TraceStore's migration cannot run
+        # here: schema-1 recordings are missing these columns and have to be
+        # substituted with the value their data implicitly carried.
+        is_practice_column = (
+            "is_practice" if _has_column(connection, "attempts", "is_practice") else "0 AS is_practice"
+        )
+        contact_column = (
+            "contact" if _has_column(connection, "cursor_samples", "contact") else "1 AS contact"
+        )
+
         attempt_rows = connection.execute(
-            """
+            f"""
             SELECT attempt_id, trial_index, attempt_index, started_us, ended_us,
                    level_pct, comparison_height_mm, reference_height_mm,
-                   bar_width_mm, reference_side, is_catch,
+                   bar_width_mm, reference_side, is_catch, {is_practice_column},
                    outcome, response, response_time_us
             FROM attempts
-            ORDER BY trial_index, attempt_index
+            ORDER BY started_us, attempt_index
             """
         ).fetchall()
 
         attempts: list[ReplayAttempt] = []
         for row in attempt_rows:
             sample_rows = connection.execute(
-                """
+                f"""
                 SELECT sequence, t_us, frame_dt_us, x_px, y_px, x_mm, y_mm,
-                       speed_mm_s, in_active_area, active_side, signal_on
+                       speed_mm_s, in_active_area, active_side, signal_on,
+                       {contact_column}
                 FROM cursor_samples
                 WHERE attempt_id = ?
                 ORDER BY sequence
@@ -193,6 +210,7 @@ def load_trace(path: str | Path) -> ReplaySession:
                     in_active_area=bool(sample["in_active_area"]),
                     active_side=sample["active_side"],
                     signal_on=bool(sample["signal_on"]),
+                    contact=bool(sample["contact"]),
                 )
                 for sample in sample_rows
             )
@@ -209,6 +227,7 @@ def load_trace(path: str | Path) -> ReplaySession:
                     bar_width_mm=row["bar_width_mm"],
                     reference_side=row["reference_side"],
                     is_catch=bool(row["is_catch"]),
+                    is_practice=bool(row["is_practice"]),
                     outcome=row["outcome"],
                     response=row["response"],
                     response_time_us=row["response_time_us"],

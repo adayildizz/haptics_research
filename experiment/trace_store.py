@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 AttemptOutcome = Literal["answered", "timeout", "aborted"]
 Side = Literal["left", "right"]
@@ -34,6 +34,15 @@ class CursorSample:
     in_active_area: bool
     active_side: Side | None
     signal_on: bool
+    contact: bool = True
+    """Whether a finger was on the glass for this sample.
+
+    Defaults to ``True`` so schema-1 recordings, which had no way to tell,
+    read as the assumption that was implicitly baked into them. On a device
+    that never reports touch state this column is uniformly ``False``; the
+    trial loop prints a warning when that happens rather than letting the
+    column be silently meaningless.
+    """
 
 
 @dataclass(frozen=True)
@@ -50,6 +59,7 @@ class AttemptDefinition:
     bar_width_mm: float
     reference_side: Side
     is_catch: bool
+    is_practice: bool = False
 
 
 class TraceStore:
@@ -63,6 +73,29 @@ class TraceStore:
         self.connection.execute("PRAGMA journal_mode = WAL")
         self.connection.execute("PRAGMA synchronous = NORMAL")
         self._create_schema()
+        self._migrate()
+
+    def _migrate(self) -> None:
+        """Add schema-2 columns to a database created under schema 1.
+
+        ``CREATE TABLE IF NOT EXISTS`` leaves an existing table alone, so new
+        columns have to be added explicitly. Both are ``NOT NULL DEFAULT``,
+        which is what lets old rows keep a defined meaning: attempts recorded
+        before practice was traced were all main-block (``is_practice = 0``),
+        and samples recorded before touch state was read were all taken on the
+        assumption that a finger was down (``contact = 1``).
+        """
+        added = False
+        for table, column, definition in (
+            ("attempts", "is_practice", "INTEGER NOT NULL DEFAULT 0"),
+            ("cursor_samples", "contact", "INTEGER NOT NULL DEFAULT 1"),
+        ):
+            existing = {row[1] for row in self.connection.execute(f"PRAGMA table_info({table})")}
+            if column not in existing:
+                self.connection.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+                added = True
+        if added:
+            self.connection.commit()
 
     def _create_schema(self) -> None:
         self.connection.executescript(
@@ -94,6 +127,7 @@ class TraceStore:
                 bar_width_mm REAL NOT NULL,
                 reference_side TEXT NOT NULL CHECK (reference_side IN ('left', 'right')),
                 is_catch INTEGER NOT NULL CHECK (is_catch IN (0, 1)),
+                is_practice INTEGER NOT NULL DEFAULT 0 CHECK (is_practice IN (0, 1)),
                 outcome TEXT CHECK (outcome IN ('answered', 'timeout', 'aborted')),
                 response TEXT CHECK (response IS NULL OR response IN ('left', 'right')),
                 response_time_us INTEGER,
@@ -113,6 +147,7 @@ class TraceStore:
                 in_active_area INTEGER NOT NULL CHECK (in_active_area IN (0, 1)),
                 active_side TEXT CHECK (active_side IS NULL OR active_side IN ('left', 'right')),
                 signal_on INTEGER NOT NULL CHECK (signal_on IN (0, 1)),
+                contact INTEGER NOT NULL DEFAULT 1 CHECK (contact IN (0, 1)),
                 PRIMARY KEY (attempt_id, sequence)
             );
 
@@ -170,8 +205,8 @@ class TraceStore:
             INSERT INTO attempts (
                 session_id, trial_index, attempt_index, started_us,
                 level_pct, comparison_height_mm, reference_height_mm,
-                bar_width_mm, reference_side, is_catch
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                bar_width_mm, reference_side, is_catch, is_practice
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 attempt.session_id,
@@ -184,6 +219,7 @@ class TraceStore:
                 attempt.bar_width_mm,
                 attempt.reference_side,
                 int(attempt.is_catch),
+                int(attempt.is_practice),
             ),
         )
         self.connection.commit()
@@ -197,8 +233,8 @@ class TraceStore:
             INSERT INTO cursor_samples (
                 attempt_id, sequence, t_us, frame_dt_us,
                 x_px, y_px, x_mm, y_mm, speed_mm_s,
-                in_active_area, active_side, signal_on
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                in_active_area, active_side, signal_on, contact
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 (
@@ -214,6 +250,7 @@ class TraceStore:
                     int(sample.in_active_area),
                     sample.active_side,
                     int(sample.signal_on),
+                    int(sample.contact),
                 )
                 for sample in samples
             ],

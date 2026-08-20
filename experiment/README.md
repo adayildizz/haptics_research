@@ -211,13 +211,42 @@ contained answered trials).
 ### Main-trial movement trace
 
 With `record_main_trace: true`, each constant-stimuli session also creates
-`experiment/data/<session_id>_trace.sqlite3`. It records every main-block
-attempt, including attempts that end in timeout or abort. Practice trials and
-staircase-pilot sessions are not recorded. Cursor samples are accumulated in
-small in-memory batches and SQLite writes run on a dedicated worker thread, so
-the real-time trial loop never performs disk I/O. The trace is intended for the
-offline replay and video-export tools; those tools do not run during an
-experiment.
+`experiment/data/<session_id>_trace.sqlite3` (schema 2). It records every
+attempt — practice and main block alike, including attempts that end in timeout
+or abort. Staircase-pilot sessions are not recorded. Cursor samples are
+accumulated in small in-memory batches and SQLite writes run on a dedicated
+worker thread, so the real-time trial loop never performs disk I/O. The trace is
+intended for the offline replay and video-export tools; those tools do not run
+during an experiment.
+
+**Sample rate.** One sample is written per *input report*, not per rendered
+frame. The trial loop drains the SDL event queue every frame anyway; reading the
+`MOUSEMOTION` events instead of discarding them and calling `mouse.get_pos()`
+keeps the trace at the IR frame's rate (~100 Hz) rather than the render loop's
+(60 Hz), which previously threw away roughly 40% of what the hardware reported.
+pygame does not expose SDL's per-event timestamp, so the frame interval is
+divided evenly between the reports that arrived in it: the timing error is
+bounded by one frame and each sample's `frame_dt_us` records its own slice.
+
+**Touch state.** `cursor_samples.contact` records whether a finger was on the
+glass. Without it a lifted finger is indistinguishable from one held still — the
+cursor keeps reporting its last position — so exploration traces cannot be split
+into strokes, and a pass left open by a lift inflates its recorded duration.
+Nothing gates the electroadhesion signal on this yet; that still keys off
+position alone, because a driver that never reports touch state would otherwise
+silence the stimulus entirely. The trial loop prints a warning when no touch-down
+is ever seen, so the rig can be checked before acting on the column.
+
+**Practice attempts** carry `is_practice = 1` and negative `trial_index` values.
+`attempts` is `UNIQUE (session_id, trial_index, attempt_index)`, so practice
+trial 1 and main-block trial 1 would otherwise collide; negative also reads
+correctly, since practice comes first. Attempts load ordered by `started_us`
+rather than `trial_index` for that reason.
+
+Schema-1 recordings keep working. `TraceStore` adds the two new columns in place
+when it opens an older database, and the replay reader — which opens traces
+read-only and therefore cannot migrate — substitutes the values those recordings
+implicitly carried (`is_practice = 0`, `contact = 1`).
 
 Open the interactive replay browser with:
 
