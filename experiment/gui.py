@@ -32,11 +32,16 @@ DATA_DIR = Path(__file__).resolve().parent / "data"
 DEFAULT_CONFIG_PATH = CONFIGS_DIR / "default.yaml"
 LAST_USED_PATH = CONFIGS_DIR / ".last_used.yaml"
 
-# (attribute, Turkish label, kind) -- kind in {"float", "int", "optional_int", "bool", "mode", "str"}
+# (attribute, Turkish label, kind)
+# kind in {"float", "int", "optional_int", "bool", "mode", "seconds", "str"}
 FIELD_GROUPS: list[tuple[str, list[tuple[str, str, str]]]] = [
-    ("Katılımcı ve Mod", [
+    ("Katılımcı", [
         ("participant_id", "Katılımcı ID", "str"),
-        ("mode", "Mod", "mode"),
+        # Gerçek deney için kapatıldı: oturum her zaman constant_stimuli olarak
+        # çalışır (config.py'deki varsayılan), bu yüzden panelde mod seçimi
+        # gösterilmiyor. Geri açmak için: aşağıdaki satırın yorumunu kaldırın ve
+        # sekme adını yeniden "Katılımcı ve Mod" yapın.
+        # ("mode", "Mod", "mode"),
     ]),
     ("Uyaran Geometrisi (mm)", [
         ("base_height_mm", "Referans yükseklik", "float"),
@@ -48,13 +53,16 @@ FIELD_GROUPS: list[tuple[str, list[tuple[str, str, str]]]] = [
         ("n_levels", "Seviye sayısı", "int"),
         ("include_zero_level", "0% seviyeyi dahil et", "bool"),
         ("trials_per_level", "Seviye başına deneme", "int"),
+        ("sweeps_per_block", "Blok başına tur (randomizasyon)", "int"),
         ("catch_trial_pct", "Kontrol deneme oranı", "float"),
     ]),
     ("Görev Ayarları", [
+        # Zaman sınırı en üstte: oturumdan oturuma en sık ayarlanan alan bu.
+        ("response_timeout_s", "Zaman sınırı — yanıt süresi (saniye)", "seconds"),
+        ("max_trial_attempts", "Deneme başına maks. gösterim", "int"),
         ("feedback", "Geri bildirim ver", "bool"),
         ("n_practice_trials", "Alıştırma deneme sayısı", "int"),
         ("break_every_n_trials", "Kaç denemede bir mola", "int"),
-        ("response_timeout_s", "Yanıt süresi (saniye)", "float"),
         ("practice_voice_feedback", "Alıştırmada sesli hız yönlendirmesi", "bool"),
         ("ideal_finger_speed_mm_s", "İdeal parmak hızı (mm/s)", "float"),
         ("ideal_speed_tolerance_pct", "İdeal hız toleransı (oran)", "float"),
@@ -67,16 +75,28 @@ FIELD_GROUPS: list[tuple[str, list[tuple[str, str, str]]]] = [
         ("ir_sample_hz_nominal", "IR frame örnekleme (Hz)", "float"),
         ("rng_seed", "RNG seed (boş = rastgele)", "optional_int"),
     ]),
-    ("Staircase Pilot (sadece pilot modda)", [
-        ("staircase_dh_start_pct", "Başlangıç adımı (%)", "float"),
-        ("staircase_dh_min_pct", "Minimum adım (%)", "float"),
-        ("staircase_dh_step_pct", "Adım büyüklüğü (%)", "float"),
-        ("staircase_n_reversals", "Ters dönüş sayısı", "int"),
-        ("staircase_n_reversals_averaged", "Ortalanan ters dönüş", "int"),
-    ]),
+    # Gerçek deney için kapatıldı: staircase_pilot modu panelde sunulmadığı için
+    # parametreleri de gösterilmiyor. Alanlar ExperimentConfig'te ve
+    # configs/pilot.yaml'da duruyor; geri açmak için bu grubun yorumunu kaldırın
+    # (mod seçimi de yukarıda geri açılmalı, yoksa pilot modu seçilemez).
+    # ("Staircase Pilot (sadece pilot modda)", [
+    #     ("staircase_dh_start_pct", "Başlangıç adımı (%)", "float"),
+    #     ("staircase_dh_min_pct", "Minimum adım (%)", "float"),
+    #     ("staircase_dh_step_pct", "Adım büyüklüğü (%)", "float"),
+    #     ("staircase_n_reversals", "Ters dönüş sayısı", "int"),
+    #     ("staircase_n_reversals_averaged", "Ortalanan ters dönüş", "int"),
+    # ]),
 ]
 
+# Yalnızca "mode" alanı geri açılırsa kullanılır (bkz. FIELD_GROUPS).
 MODE_CHOICES = ["constant_stimuli", "staircase_pilot"]
+
+# "seconds" alanlarının spinbox sınırları. Panel sınırları; gerçek doğrulama
+# config.py'de (response_timeout_s > 0). Üst sınır, yanlışlıkla girilen bir
+# 3000'in oturumu kilitlemesini engellemek için var.
+SECONDS_MIN = 1.0
+SECONDS_MAX = 300.0
+SECONDS_STEP = 5.0
 
 # Explanation shown under each field. Where the default traces to something
 # concrete (a cited standard/paper, or the rig's actual hardware spec, both
@@ -110,6 +130,12 @@ FIELD_HELP: dict[str, str] = {
     "(analysis/fit_psychometric.py) varsayılan olarak scipy MLE kullanıyor; bu yöntem az sayıda "
     "denemede daha savrulabilir olduğundan seviye başına en az birkaç, ideal olarak ~10 civarı "
     "deneme önerilir.",
+    "sweeps_per_block": "Deneme sırası, her seviyeden eşit sayıda içeren bloklar halinde karıştırılır; "
+    "bu alan bir blokta her seviyenin kaç kez geçeceğini belirler. 1 = blok başına her seviyeden 1 "
+    "(6 seviyede 6'lık bloklar), 2 = 12'lik bloklar. Tüm seti tek seferde karıştırmak seviyeyi "
+    "oturum içindeki zamana bağlı bırakıyordu: bir seviyenin denemeleri ilk/ikinci yarıya ortalama "
+    "4.6 farkla, en kötü 10-0 dağılabiliyordu. Bloklama bu farkı tanım gereği sıfırlar. "
+    "trials_per_level bu değere tam bölünmeli.",
     "catch_trial_pct": "En uç seviyelerde (±delta_max_pct) eklenen ekstra 'kolay' kontrol denemesi "
     "oranı; katılımcının dikkatini/lapse oranını ölçmek içindir. Standart bir dikkat kontrolü "
     "pratiğidir, belirli bir referansa dayanmıyor.",
@@ -119,9 +145,15 @@ FIELD_HELP: dict[str, str] = {
     "deneme sayısı. Mühendislik tercihi, belirli bir referansa bağlı değil.",
     "break_every_n_trials": "Kaç denemede bir zorunlu mola verileceği; yorgunluk ve dikkat kaybını "
     "azaltmak içindir. Belirli bir referansa bağlı değil.",
-    "response_timeout_s": "Ana blokta her yanıt için tanınan süre. Süre dolunca uyarı sesi çalar; "
-    "yanıtlanmayan deneme sayılmadan bekleyen bar çiftleri yeniden karıştırılır. Alıştırma "
-    "denemelerinde süre sınırı uygulanmaz.",
+    "response_timeout_s": "Deneme başına tanınan yanıt süresi; varsayılan 30 saniye. Alıştırma "
+    "denemeleri dahil her denemede geçerlidir (katılımcı saati ilk kez ana blokta görmesin diye) "
+    "ve ekranda geri sayım olarak gösterilir, son 5 saniyede kırmızıya döner. Süre dolunca yumuşak "
+    "bir uyarı sesi çalar ve o deneme sayılmadan bloğun en sonuna ertelenir. Oturumdan oturuma "
+    "serbestçe değiştirilebilir; seçilen değer config snapshot'ına da yazılır.",
+    "max_trial_attempts": "Bir denemenin katılımcıya en fazla kaç kez gösterileceği (ilk gösterim "
+    "dahil). Yanıtsız kalan deneme bloğun sonuna erteleniyor; bu sınır olmasa katılımcı hiç yanıt "
+    "vermediğinde oturum hiç bitmezdi. Sınır dolduğunda deneme terk edilir (konsola yazılır, trace "
+    "veritabanında timeout olarak kalır) ve o seviyede bir gözlem eksilir. 3 = ilk gösterim + 2 tekrar.",
     "practice_voice_feedback": "Yalnızca alıştırma denemelerinde Faster, Good speed ve Slower "
     "sesli yönlendirmelerini açar. Ana deney bloğunda hiçbir hız sesi çalmaz.",
     "ideal_finger_speed_mm_s": "Alıştırmadaki sesli yönlendirmenin hedef parmak hızı. Varsayılan "
@@ -335,6 +367,24 @@ class LauncherApp:
             ttk.Combobox(parent, textvariable=var, values=MODE_CHOICES, state="readonly", width=22).grid(
                 row=row, column=1, sticky="w", pady=(6, 0)
             )
+        elif kind == "seconds":
+            var = tk.StringVar()
+            # A spinbox so the limit can be nudged without retyping. ttk.Spinbox
+            # needs Tk 8.6; the rig PCs are the reason this file avoids assuming
+            # a modern Tk at all, so fall back to a plain entry when it is
+            # missing rather than failing to open the panel.
+            try:
+                widget = ttk.Spinbox(
+                    parent,
+                    textvariable=var,
+                    from_=SECONDS_MIN,
+                    to=SECONDS_MAX,
+                    increment=SECONDS_STEP,
+                    width=22,
+                )
+            except (AttributeError, tk.TclError):
+                widget = ttk.Entry(parent, textvariable=var, width=24)
+            widget.grid(row=row, column=1, sticky="w", pady=(6, 0))
         else:
             var = tk.StringVar()
             ttk.Entry(parent, textvariable=var, width=24).grid(row=row, column=1, sticky="w", pady=(6, 0))
@@ -376,6 +426,14 @@ class LauncherApp:
                 kwargs[attr] = int(str(raw).strip())
             elif kind == "float":
                 kwargs[attr] = float(str(raw).strip())
+            elif kind == "seconds":
+                seconds = float(str(raw).strip())
+                if not SECONDS_MIN <= seconds <= SECONDS_MAX:
+                    raise ValueError(
+                        f"{attr}: {seconds:g} s, "
+                        f"{SECONDS_MIN:g}-{SECONDS_MAX:g} saniye aralığında olmalı"
+                    )
+                kwargs[attr] = seconds
         return ExperimentConfig(**kwargs)
 
     def _on_apply(self) -> None:

@@ -67,6 +67,7 @@ class ExperimentConfig:
     n_levels: int = 6
     include_zero_level: bool = False
     trials_per_level: int = 10
+    sweeps_per_block: int = 1
     catch_trial_pct: float = 0.10
 
     # Task
@@ -74,6 +75,7 @@ class ExperimentConfig:
     n_practice_trials: int = 8
     break_every_n_trials: int = 30
     response_timeout_s: float = 30.0
+    max_trial_attempts: int = 3
     practice_voice_feedback: bool = True
     ideal_finger_speed_mm_s: float = 100.0
     ideal_speed_tolerance_pct: float = 0.30
@@ -108,8 +110,17 @@ class ExperimentConfig:
             raise ValueError("n_levels must be >= 2")
         if self.trials_per_level < 1:
             raise ValueError("trials_per_level must be >= 1")
+        if self.sweeps_per_block < 1:
+            raise ValueError("sweeps_per_block must be >= 1")
+        if self.trials_per_level % self.sweeps_per_block:
+            raise ValueError(
+                f"trials_per_level ({self.trials_per_level}) must be divisible by "
+                f"sweeps_per_block ({self.sweeps_per_block}), so every block is balanced"
+            )
         if self.response_timeout_s <= 0:
             raise ValueError("response_timeout_s must be > 0")
+        if self.max_trial_attempts < 1:
+            raise ValueError("max_trial_attempts must be >= 1")
         if self.ideal_finger_speed_mm_s <= 0:
             raise ValueError("ideal_finger_speed_mm_s must be > 0")
         if not 0 <= self.ideal_speed_tolerance_pct < 1:

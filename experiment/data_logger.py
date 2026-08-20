@@ -20,6 +20,7 @@ TRIAL_FIELDS = [
     "reference_height_mm",
     "bar_width_mm",
     "reference_side",
+    "outcome",
     "response",
     "correct",
     "is_catch",
@@ -27,6 +28,20 @@ TRIAL_FIELDS = [
     "response_time_s",
     "passes_json",
 ]
+
+# Row-type discriminator. Every trial the participant was shown gets a row;
+# ``outcome`` is what tells them apart, so downstream code never has to infer
+# intent from a blank cell. These deliberately line up with the trace
+# database's per-attempt ``outcome`` (see trace_store.AttemptOutcome), so the
+# CSV and the replay recordings describe the same set of events:
+#   answered  -- a response was given (the only rows the curve fit consumes)
+#   timeout   -- the response window closed; the trial was re-queued
+#   exhausted -- the last attempt allowed by max_trial_attempts also expired.
+#                A refinement of "timeout", not a separate kind of event: the
+#                trace stores these as timeout too, since "was this the last
+#                attempt" is a scheduling fact, not a per-attempt one.
+#   aborted   -- exit key or closed window ended the trial (and the session)
+OUTCOMES = ("answered", "timeout", "exhausted", "aborted")
 
 # Staircase pilot-mode threshold summary (unchanged shape from the previous
 # staircase-only design, kept for mode == "staircase_pilot").
@@ -73,7 +88,12 @@ def load_trials(path: Path) -> list[dict[str, Any]]:
             row["level_pct"] = float(row["level_pct"])
             row["comparison_height_mm"] = float(row["comparison_height_mm"])
             row["reference_height_mm"] = float(row["reference_height_mm"])
-            row["correct"] = row["correct"] in ("1", "True", "true")
+            # Sessions recorded before the outcome column existed only ever
+            # wrote answered trials, so that is the right default for them.
+            row["outcome"] = raw.get("outcome") or "answered"
+            # None, not False: an unanswered trial made no judgment, and 0
+            # would read as a wrong answer.
+            row["correct"] = row["correct"] in ("1", "True", "true") if row["correct"] else None
             row["is_catch"] = row["is_catch"] in ("1", "True", "true")
             row["is_practice"] = row["is_practice"] in ("1", "True", "true")
             row["response_time_s"] = float(row["response_time_s"]) if row["response_time_s"] else None

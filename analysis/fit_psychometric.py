@@ -206,8 +206,10 @@ def aggregate_by_level(
 def load_session_csvs(paths: list[Path]) -> tuple[list[float], list[int], list[int]]:
     """Load one or more trial CSVs (main.py's data_logger schema) and aggregate by level.
 
-    Practice trials are excluded; catch trials are included since they are
-    just extra reps at the extreme levels.
+    Only ``outcome == "answered"`` rows are used: the CSV also carries the
+    trials that expired (``timeout``/``abandoned``), which have no response to
+    score. Practice trials are excluded; catch trials are included since they
+    are just extra reps at the extreme levels.
     """
     from experiment import data_logger  # local import: keeps this module pygame-free at import time
 
@@ -216,7 +218,7 @@ def load_session_csvs(paths: list[Path]) -> tuple[list[float], list[int], list[i
     response: list[str] = []
     for path in paths:
         for row in data_logger.load_trials(Path(path)):
-            if row["is_practice"]:
+            if row["is_practice"] or row["outcome"] != "answered":
                 continue
             level_pct.append(row["level_pct"])
             reference_side.append(row["reference_side"])
