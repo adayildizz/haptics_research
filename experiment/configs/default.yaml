@@ -11,12 +11,14 @@ delta_max_pct: 0.30
 n_levels: 6
 include_zero_level: false
 trials_per_level: 10
+sweeps_per_block: 1              # levels per block = n_levels * this; 1 -> blocks of 6
 catch_trial_pct: 0.10
 
 feedback: false
 n_practice_trials: 8
 break_every_n_trials: 30
-response_timeout_s: 30.0
+response_timeout_s: 30.0         # response time limit, practice trials included
+max_trial_attempts: 3            # incl. the first showing; caps the timeout-retry loop
 practice_voice_feedback: true
 ideal_finger_speed_mm_s: 100.0  # 10 cm/s
 ideal_speed_tolerance_pct: 0.30 # accepted band: 70-130 mm/s
