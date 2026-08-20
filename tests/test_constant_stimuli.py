@@ -9,6 +9,7 @@ from experiment.config import ExperimentConfig
 from experiment.constant_stimuli import (
     ScheduledTrial,
     build_practice_sequence,
+    practice_levels,
     build_schedule,
     build_trial_sequence,
     comparison_height_mm,
@@ -23,6 +24,10 @@ def _cfg(**overrides) -> ExperimentConfig:
     base = dict(base_height_mm=10.0, bar_width_mm=10.0, inter_bar_gap_mm=10.0)
     base.update(overrides)
     return ExperimentConfig(**base)
+
+
+def _overrides(cfg: ExperimentConfig) -> dict:
+    return {"delta_max_pct": cfg.delta_max_pct, "n_levels": cfg.n_levels}
 
 
 def test_levels_symmetric_and_excludes_zero_by_default():
@@ -100,12 +105,75 @@ def test_trial_sequence_different_seed_differs():
     assert [(t.level_pct, t.reference_side) for t in a] != [(t.level_pct, t.reference_side) for t in b]
 
 
-def test_practice_sequence_uses_easy_levels_only():
-    cfg = _cfg(delta_max_pct=0.30, n_practice_trials=8)
+def test_practice_draws_from_the_easiest_real_levels():
+    """Not just the single extreme: the top N magnitudes the design actually uses."""
+    cfg = _cfg(delta_max_pct=0.30, n_levels=6, n_practice_trials=16, practice_easiest_levels=2)
+
+    assert practice_levels(cfg) == pytest.approx([-0.30, -0.18, 0.18, 0.30])
+
     trials = build_practice_sequence(cfg, random.Random(1))
-    assert len(trials) == 8
-    assert all(t.is_practice for t in trials)
-    assert all(abs(abs(t.level_pct) - cfg.delta_max_pct) < 1e-9 for t in trials)
+    assert len(trials) == 16
+    assert all(t.is_practice and not t.is_catch for t in trials)
+    # Every practice level is a level the main block will present.
+    main_levels = {round(l, 6) for l in compute_levels(cfg)}
+    assert {round(t.level_pct, 6) for t in trials} <= main_levels
+
+
+def test_practice_trials_split_evenly_across_its_levels():
+    cfg = _cfg(delta_max_pct=0.30, n_levels=6, n_practice_trials=16, practice_easiest_levels=2)
+
+    trials = build_practice_sequence(cfg, random.Random(1))
+
+    counts = collections.Counter(round(t.level_pct, 6) for t in trials)
+    assert set(counts.values()) == {4}  # 16 trials / 4 signed levels
+    for level in counts:
+        sides = [t.reference_side for t in trials if round(t.level_pct, 6) == level]
+        assert sides.count("left") == sides.count("right") == 2
+
+
+def test_practice_never_repeats_a_level_back_to_back_within_a_block():
+    cfg = _cfg(delta_max_pct=0.30, n_levels=6, n_practice_trials=16, practice_easiest_levels=2)
+    block_size = len(practice_levels(cfg))
+
+    trials = build_practice_sequence(cfg, random.Random(1))
+
+    for start in range(0, len(trials), block_size):
+        block = trials[start:start + block_size]
+        assert len({round(t.level_pct, 6) for t in block}) == len(block)
+
+
+def test_uneven_practice_counts_spread_the_remainder():
+    cfg = _cfg(delta_max_pct=0.30, n_levels=6, n_practice_trials=10, practice_easiest_levels=2)
+
+    trials = build_practice_sequence(cfg, random.Random(1))
+
+    counts = collections.Counter(round(t.level_pct, 6) for t in trials)
+    assert len(trials) == 10
+    assert sorted(counts.values()) == [2, 2, 3, 3]
+
+
+def test_practice_level_count_can_widen_or_narrow():
+    cfg = _cfg(delta_max_pct=0.30, n_levels=6)
+
+    assert practice_levels(_cfg(**{**_overrides(cfg), "practice_easiest_levels": 1})) == pytest.approx(
+        [-0.30, 0.30]
+    )
+    assert practice_levels(_cfg(**{**_overrides(cfg), "practice_easiest_levels": 3})) == pytest.approx(
+        [-0.30, -0.18, -0.06, 0.06, 0.18, 0.30]
+    )
+    # Asking for more magnitudes than the design has just uses all of them.
+    assert practice_levels(_cfg(**{**_overrides(cfg), "practice_easiest_levels": 9})) == pytest.approx(
+        [-0.30, -0.18, -0.06, 0.06, 0.18, 0.30]
+    )
+
+
+def test_practice_never_uses_the_zero_level():
+    """Practice runs with feedback on, and at 0% no answer is honestly correct."""
+    cfg = _cfg(delta_max_pct=0.30, n_levels=7, include_zero_level=True, practice_easiest_levels=9)
+
+    assert any(abs(level) < 1e-9 for level in compute_levels(cfg))
+    assert all(abs(level) > 1e-9 for level in practice_levels(cfg))
+    assert all(abs(t.level_pct) > 1e-9 for t in build_practice_sequence(cfg, random.Random(1)))
 
 
 def test_resolve_seed_uses_configured_seed_when_set():

@@ -62,6 +62,7 @@ FIELD_GROUPS: list[tuple[str, list[tuple[str, str, str]]]] = [
         ("max_trial_attempts", "Deneme başına maks. gösterim", "int"),
         ("feedback", "Geri bildirim ver", "bool"),
         ("n_practice_trials", "Alıştırma deneme sayısı", "int"),
+        ("practice_easiest_levels", "Alıştırmada kullanılacak kolay seviye sayısı", "int"),
         ("break_every_n_trials", "Kaç denemede bir mola", "int"),
         ("practice_voice_feedback", "Alıştırmada sesli hız yönlendirmesi", "bool"),
         ("ideal_finger_speed_mm_s", "İdeal parmak hızı (mm/s)", "float"),
@@ -142,7 +143,14 @@ FIELD_HELP: dict[str, str] = {
     "feedback": "Katılımcıya her denemeden sonra doğru/yanlış bildirilsin mi. Ana blokta genelde "
     "kapalı tutulur ki yanıt yanlılığı oluşmasın; alıştırma denemelerinde ayrıca açık çalıştırılır.",
     "n_practice_trials": "Ana bloktan önce katılımcının göreve alışması için yapılan (geri bildirimli) "
-    "deneme sayısı. Mühendislik tercihi, belirli bir referansa bağlı değil.",
+    "deneme sayısı. Alıştırma seviyelerine olabildiğince eşit bölünür; tam bölünmezse artan denemeler "
+    "rastgele seçilen seviyelere dağıtılır. 0 = alıştırma bloğu hiç çalışmaz.",
+    "practice_easiest_levels": "Alıştırmanın tasarımın EN KOLAY kaç seviyesinden çekileceği. Büyüklük "
+    "sayar ve her büyüklük iki işaretiyle birlikte gelir: ±%6/±%18/±%30 bir tasarımda 2 değeri ±%18 ve "
+    "±%30 verir, yani 4 işaretli seviye. Alıştırma böylece ana blokta gerçekten karşılaşılacak "
+    "seviyeleri kullanır -- eskiden yalnızca en uç seviye kullanılıyordu, katılımcı bir alt seviyeyi "
+    "ilk kez test koşullarında görüyordu. Tasarımda olandan fazlası istenirse hepsi kullanılır. "
+    "%0 seviyesi asla dahil edilmez: alıştırmada geri bildirim açık ve orada 'doğru' cevap tanımsız.",
     "break_every_n_trials": "Kaç denemede bir zorunlu mola verileceği; yorgunluk ve dikkat kaybını "
     "azaltmak içindir. Belirli bir referansa bağlı değil.",
     "response_timeout_s": "Deneme başına tanınan yanıt süresi; varsayılan 30 saniye. Alıştırma "

@@ -72,7 +72,8 @@ class ExperimentConfig:
 
     # Task
     feedback: bool = False
-    n_practice_trials: int = 8
+    n_practice_trials: int = 16
+    practice_easiest_levels: int = 2
     break_every_n_trials: int = 30
     response_timeout_s: float = 30.0
     max_trial_attempts: int = 3
@@ -110,6 +111,8 @@ class ExperimentConfig:
             raise ValueError("n_levels must be >= 2")
         if self.trials_per_level < 1:
             raise ValueError("trials_per_level must be >= 1")
+        if self.practice_easiest_levels < 1:
+            raise ValueError("practice_easiest_levels must be >= 1")
         if self.sweeps_per_block < 1:
             raise ValueError("sweeps_per_block must be >= 1")
         if self.trials_per_level % self.sweeps_per_block:

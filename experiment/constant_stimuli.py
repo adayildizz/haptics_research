@@ -56,24 +56,71 @@ def _side_assignment(n: int, rng: random.Random) -> list[str]:
     return sides
 
 
+def practice_levels(cfg: ExperimentConfig) -> list[float]:
+    """The signed levels practice draws from: the easy end of the real design.
+
+    Practice teaches the response mapping, so it uses levels the main block
+    will actually present -- just the ones with the largest height
+    difference, where the judgment is least ambiguous. It used to hard-code
+    ``±delta_max_pct``, which is only ever the single most extreme level; if
+    a design has 10/20/30% steps, the participant would practise at 30% and
+    then meet 20% for the first time under test conditions.
+
+    ``practice_easiest_levels`` counts *magnitudes*, taken from the largest
+    down, and each contributes both of its signs -- so 2 magnitudes of a
+    10/20/30% design give the four signed levels ±20% and ±30%. Asking for
+    more magnitudes than the design has simply uses all of them.
+
+    A 0% level is never included even when ``include_zero_level`` is set:
+    practice runs with feedback on, and at 0% there is no answer that can
+    honestly be called correct.
+    """
+    magnitudes = sorted(
+        {abs(level) for level in compute_levels(cfg) if abs(level) > 1e-12},
+        reverse=True,
+    )
+    chosen = magnitudes[: cfg.practice_easiest_levels]
+    return sorted([-magnitude for magnitude in chosen] + list(chosen))
+
+
 def build_practice_sequence(cfg: ExperimentConfig, rng: random.Random) -> list[TrialSpec]:
-    """Easy (±delta_max) practice trials, feedback is expected to be forced on by the caller."""
+    """Easy practice trials; the caller is expected to force feedback on.
+
+    Trials are split as evenly as the count allows across the signed
+    practice levels, with any remainder going to a random subset so no level
+    is systematically short. Order is blocked the same way the main block is
+    -- one presentation of each level per block, shuffled within it -- so
+    practice never runs several trials of one level back to back.
+    """
+    levels = practice_levels(cfg)
+    if not levels or cfg.n_practice_trials < 1:
+        return []
+
+    base, remainder = divmod(cfg.n_practice_trials, len(levels))
+    remaining = {level: base for level in levels}
+    for level in rng.sample(levels, remainder):
+        remaining[level] += 1
+
+    sides_by_level = {level: _side_assignment(remaining[level], rng) for level in levels}
+    used = {level: 0 for level in levels}
+
     trials: list[TrialSpec] = []
-    levels = [-cfg.delta_max_pct, cfg.delta_max_pct]
-    sides = _side_assignment(cfg.n_practice_trials, rng)
-    for i in range(cfg.n_practice_trials):
-        level = levels[i % len(levels)]
-        trials.append(
-            TrialSpec(
-                level_pct=level,
-                comparison_height_mm=comparison_height_mm(cfg.base_height_mm, level),
-                reference_height_mm=cfg.base_height_mm,
-                reference_side=sides[i],
-                is_catch=False,
-                is_practice=True,
+    while any(remaining.values()):
+        block = [level for level in levels if remaining[level]]
+        rng.shuffle(block)
+        for level in block:
+            trials.append(
+                TrialSpec(
+                    level_pct=level,
+                    comparison_height_mm=comparison_height_mm(cfg.base_height_mm, level),
+                    reference_height_mm=cfg.base_height_mm,
+                    reference_side=sides_by_level[level][used[level]],
+                    is_catch=False,
+                    is_practice=True,
+                )
             )
-        )
-    rng.shuffle(trials)
+            remaining[level] -= 1
+            used[level] += 1
     return trials
 
 
