@@ -6,6 +6,7 @@ tested and reused by the analysis and dry-run tooling.
 
 from __future__ import annotations
 
+import math
 import random
 from dataclasses import dataclass
 
@@ -122,6 +123,26 @@ def build_practice_sequence(cfg: ExperimentConfig, rng: random.Random) -> list[T
             remaining[level] -= 1
             used[level] += 1
     return trials
+
+
+def practice_required_correct(n_practice_trials: int, pass_fraction: float) -> int:
+    """How many practice trials must be answered correctly for the block to pass.
+
+    ``ceil(fraction * n)``: with 16 trials and 0.75 that is 12, so a score of
+    11/16 (68.75%) repeats the block and 12/16 (75%) passes it. Ceil rather
+    than round so that "at least 75%" means exactly that.
+    """
+    return math.ceil(pass_fraction * n_practice_trials - 1e-9)
+
+
+def practice_passed(n_correct: int, n_practice_trials: int, pass_fraction: float) -> bool:
+    """True if the practice block met the pass criterion and need not repeat.
+
+    Only *correct answers* count: a trial that timed out (or was exhausted)
+    counts against the participant exactly like a wrong answer, since the
+    block's job is to show they can do the task within the response window.
+    """
+    return n_correct >= practice_required_correct(n_practice_trials, pass_fraction)
 
 
 def build_trial_sequence(cfg: ExperimentConfig, seed: int) -> list[TrialSpec]:

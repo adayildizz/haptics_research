@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 from typing import TYPE_CHECKING
@@ -141,8 +142,15 @@ def run_trial(
     fps: int,
     speed_coach: PracticeSpeedCoach | None = None,
     trace_attempt: AttemptTraceBuffer | None = None,
+    feedback_speaker: Callable[[str], object] | None = None,
 ) -> TrialResult | TrialTimeout | TrialAborted:
-    """Run one 2AFC trial, returning a response, a timeout, or an abort."""
+    """Run one 2AFC trial, returning a response, a timeout, or an abort.
+
+    ``feedback_speaker`` is called with "Correct" / "Incorrect" whenever
+    feedback is shown. The participant is blindfolded, so the on-screen word
+    is for the operator; the spoken one is the feedback the participant
+    actually gets. It is expected to block until the word has been said.
+    """
     comparison_side = "right" if spec.reference_side == "left" else "left"
     left_is_comparison = comparison_side == "left"
     layout = display.make_trial_layout(
@@ -260,7 +268,11 @@ def run_trial(
                     if cfg.feedback or spec.is_practice:
                         display.draw_feedback(screen, correct)
                         pygame.display.flip()
-                        pygame.time.wait(500)
+                        if feedback_speaker is not None:
+                            feedback_speaker("Correct" if correct else "Incorrect")
+                            pygame.time.wait(250)
+                        else:
+                            pygame.time.wait(500)
                     return result
 
         elapsed_trial_s = now - trial_start

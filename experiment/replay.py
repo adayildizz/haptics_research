@@ -141,7 +141,7 @@ class ReplayBrowser:
             color = SELECTED if index == self.attempt_index else (ROW if index % 2 == 0 else ROW_ALT)
             pygame.draw.rect(self.screen, color, rect, border_radius=6)
             main_text = self.body_font.render(
-                f"Trial {attempt.trial_index:02d}   Attempt {attempt.attempt_index:02d}",
+                f"{attempt.label}   Attempt {attempt.attempt_index:02d}",
                 True,
                 TEXT,
             )

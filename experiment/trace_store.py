@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2  # v2: attempts carry is_practice / practice_round
 
 AttemptOutcome = Literal["answered", "timeout", "aborted"]
 Side = Literal["left", "right"]
@@ -50,6 +50,12 @@ class AttemptDefinition:
     bar_width_mm: float
     reference_side: Side
     is_catch: bool
+    # Practice attempts are recorded too (the finger-posture record is what
+    # the practice block is there to clean up), tagged so analysis can keep
+    # them apart from the main block. ``practice_round`` is 1-based for
+    # practice and 0 for main-block attempts.
+    is_practice: bool = False
+    practice_round: int = 0
 
 
 class TraceStore:
@@ -94,10 +100,12 @@ class TraceStore:
                 bar_width_mm REAL NOT NULL,
                 reference_side TEXT NOT NULL CHECK (reference_side IN ('left', 'right')),
                 is_catch INTEGER NOT NULL CHECK (is_catch IN (0, 1)),
+                is_practice INTEGER NOT NULL DEFAULT 0 CHECK (is_practice IN (0, 1)),
+                practice_round INTEGER NOT NULL DEFAULT 0,
                 outcome TEXT CHECK (outcome IN ('answered', 'timeout', 'aborted')),
                 response TEXT CHECK (response IS NULL OR response IN ('left', 'right')),
                 response_time_us INTEGER,
-                UNIQUE (session_id, trial_index, attempt_index)
+                UNIQUE (session_id, is_practice, practice_round, trial_index, attempt_index)
             );
 
             CREATE TABLE IF NOT EXISTS cursor_samples (
@@ -170,8 +178,9 @@ class TraceStore:
             INSERT INTO attempts (
                 session_id, trial_index, attempt_index, started_us,
                 level_pct, comparison_height_mm, reference_height_mm,
-                bar_width_mm, reference_side, is_catch
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                bar_width_mm, reference_side, is_catch,
+                is_practice, practice_round
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 attempt.session_id,
@@ -184,6 +193,8 @@ class TraceStore:
                 attempt.bar_width_mm,
                 attempt.reference_side,
                 int(attempt.is_catch),
+                int(attempt.is_practice),
+                int(attempt.practice_round),
             ),
         )
         self.connection.commit()

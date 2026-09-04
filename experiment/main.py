@@ -24,7 +24,7 @@ from typing import Any, TYPE_CHECKING
 from . import calibration as calibration_module
 from . import constant_stimuli, data_logger
 from .config import ExperimentConfig, config_to_dict, load_experiment_config, write_config_snapshot
-from .constant_stimuli import TrialSpec, resolve_seed
+from .constant_stimuli import TrialSpec, practice_passed, practice_required_correct, resolve_seed
 from .input_keys import is_continue_key, is_exit_key
 from .staircase import StairCase, pilot_range_check
 
@@ -156,6 +156,7 @@ def _trial_row(
     trial_index: int,
     outcome: str,
     result: Any,
+    practice_round: int = 0,
 ) -> dict[str, Any]:
     """Build one trial CSV row for any outcome.
 
@@ -171,6 +172,7 @@ def _trial_row(
     return {
         "session_id": session_id,
         "participant_id": cfg.participant_id,
+        "dominant_hand": cfg.dominant_hand,
         "timestamp": result.timestamp,
         "trial_index": trial_index,
         "mode": cfg.mode,
@@ -184,9 +186,48 @@ def _trial_row(
         "bar_width_mm": f"{cfg.bar_width_mm:.4f}",
         "is_catch": int(spec.is_catch),
         "is_practice": int(spec.is_practice),
+        "practice_round": practice_round,
         "response_time_s": f"{(result.response_time_s if answered else result.elapsed_s):.4f}",
         "passes": result.passes,
     }
+
+
+def _start_trace_attempt(
+    trace_recorder: AsyncTraceRecorder,
+    session_id: str,
+    cfg: ExperimentConfig,
+    spec: TrialSpec,
+    *,
+    trial_index: int,
+    attempt_index: int,
+    practice_round: int = 0,
+):
+    """Open a trace attempt for one presentation, practice or main.
+
+    Practice attempts are keyed by round as well, because ``trial_index``
+    restarts at 1 in every practice round and again in the main block.
+    """
+    from .trace_store import AttemptDefinition
+
+    is_practice = practice_round > 0
+    prefix = f"p{practice_round}:" if is_practice else ""
+    return trace_recorder.start_attempt(
+        f"{prefix}{trial_index}:{attempt_index}",
+        AttemptDefinition(
+            session_id=session_id,
+            trial_index=trial_index,
+            attempt_index=attempt_index,
+            started_us=trace_recorder.elapsed_us(),
+            level_pct=spec.level_pct,
+            comparison_height_mm=spec.comparison_height_mm,
+            reference_height_mm=spec.reference_height_mm,
+            bar_width_mm=cfg.bar_width_mm,
+            reference_side=spec.reference_side,
+            is_catch=spec.is_catch,
+            is_practice=is_practice,
+            practice_round=practice_round,
+        ),
+    )
 
 
 def run_constant_stimuli(
@@ -211,60 +252,111 @@ def run_constant_stimuli(
     if cfg.n_practice_trials > 0:
         from .speed_coach import PRACTICE_INSTRUCTION, PracticeSpeedCoach, SystemVoice
 
-        voice = SystemVoice() if cfg.practice_voice_feedback else None
+        # One system voice serves both jobs in practice: the speed coach
+        # ("Faster" / "Slower" / "Good speed") and the spoken correct /
+        # incorrect feedback. The participant is blindfolded, so without the
+        # spoken word the practice block would give no feedback at all.
+        voice = SystemVoice() if (cfg.practice_voice_feedback or cfg.practice_spoken_feedback) else None
+        voice_ok = voice is not None and voice.available
         speed_coach = (
             PracticeSpeedCoach(
                 cfg.ideal_finger_speed_mm_s,
                 cfg.ideal_speed_tolerance_pct,
                 voice.speak,
             )
-            if voice is not None and voice.available
+            if voice_ok and cfg.practice_voice_feedback
             else None
         )
+        feedback_speaker = voice.speak_now if voice_ok and cfg.practice_spoken_feedback else None
+        required = practice_required_correct(cfg.n_practice_trials, cfg.practice_pass_fraction)
         try:
-            if not wait_for_continue_or_exit(screen, "Practice trials (feedback on)."):
+            if not wait_for_continue_or_exit(
+                screen,
+                f"Practice trials (feedback on). Pass mark {required}/{cfg.n_practice_trials}.",
+            ):
                 return
-            if voice is not None and voice.available:
+            if voice_ok and cfg.practice_voice_feedback:
                 voice.speak(PRACTICE_INSTRUCTION, wait=True)
-            practice_pending = [
-                constant_stimuli.ScheduledTrial(spec)
-                for spec in constant_stimuli.build_practice_sequence(cfg, rng)
-            ]
-            practice_deferred: list[constant_stimuli.ScheduledTrial] = []
-            shown = 0
-            while practice_pending or practice_deferred:
-                if not practice_pending:
-                    practice_pending = constant_stimuli.take_retry_round(practice_deferred, rng)
-                scheduled = practice_pending.pop(0)
-                scheduled.attempts += 1
-                shown += 1
-                result = trial_module.run_trial(
-                    screen,
-                    clock,
-                    calibration,
-                    instrument,
-                    cfg,
-                    scheduled.spec,
-                    shown,
-                    fps=60,
-                    speed_coach=speed_coach,
-                )
-                if isinstance(result, trial_module.TrialAborted):
-                    outcome = "aborted"
-                elif isinstance(result, trial_module.TrialTimeout):
-                    # Practice is timed too now, so it needs the same bounded
-                    # retry: re-shown at the end of practice, then let go.
-                    requeued = constant_stimuli.defer_timed_out_trial(
-                        scheduled, practice_deferred, cfg.max_trial_attempts
+
+            practice_round = 0
+            while True:
+                practice_round += 1
+                practice_pending = [
+                    constant_stimuli.ScheduledTrial(spec)
+                    for spec in constant_stimuli.build_practice_sequence(cfg, rng)
+                ]
+                practice_deferred: list[constant_stimuli.ScheduledTrial] = []
+                shown = 0
+                n_correct = 0
+                while practice_pending or practice_deferred:
+                    if not practice_pending:
+                        practice_pending = constant_stimuli.take_retry_round(practice_deferred, rng)
+                    scheduled = practice_pending.pop(0)
+                    scheduled.attempts += 1
+                    shown += 1
+                    trace_attempt = None
+                    if trace_recorder is not None:
+                        trace_attempt = _start_trace_attempt(
+                            trace_recorder,
+                            session_id,
+                            cfg,
+                            scheduled.spec,
+                            trial_index=shown,
+                            attempt_index=scheduled.attempts,
+                            practice_round=practice_round,
+                        )
+                    result = trial_module.run_trial(
+                        screen,
+                        clock,
+                        calibration,
+                        instrument,
+                        cfg,
+                        scheduled.spec,
+                        shown,
+                        fps=60,
+                        speed_coach=speed_coach,
+                        trace_attempt=trace_attempt,
+                        feedback_speaker=feedback_speaker,
                     )
-                    outcome = "timeout" if requeued else "exhausted"
-                else:
-                    outcome = "answered"
-                data_logger.append_trial(
-                    _trial_row(session_id, cfg, scheduled.spec, shown, outcome, result),
-                    trial_path,
+                    if isinstance(result, trial_module.TrialAborted):
+                        outcome = "aborted"
+                    elif isinstance(result, trial_module.TrialTimeout):
+                        # Practice is timed too, so it needs the same bounded
+                        # retry: re-shown at the end of the round, then let go.
+                        requeued = constant_stimuli.defer_timed_out_trial(
+                            scheduled, practice_deferred, cfg.max_trial_attempts
+                        )
+                        outcome = "timeout" if requeued else "exhausted"
+                    else:
+                        outcome = "answered"
+                        n_correct += int(result.correct)
+                    data_logger.append_trial(
+                        _trial_row(
+                            session_id, cfg, scheduled.spec, shown, outcome, result,
+                            practice_round=practice_round,
+                        ),
+                        trial_path,
+                    )
+                    if outcome == "aborted":
+                        return
+
+                passed = practice_passed(n_correct, cfg.n_practice_trials, cfg.practice_pass_fraction)
+                print(
+                    f"practice round {practice_round}: {n_correct}/{cfg.n_practice_trials} correct "
+                    f"(pass mark {required}) -> {'passed' if passed else 'repeat'}"
                 )
-                if outcome == "aborted":
+                if passed:
+                    break
+                # Below the pass mark: the whole block runs again, freshly
+                # shuffled. There is no cap on rounds by design (the
+                # supervisor can always end the session with Escape).
+                if voice_ok:
+                    voice.speak_now("The practice block will be repeated.")
+                if not wait_for_continue_or_exit(
+                    screen,
+                    f"Practice round {practice_round}: {n_correct}/{cfg.n_practice_trials} correct, "
+                    f"below the pass mark of {required}. Repeating practice.",
+                ):
                     return
         finally:
             if voice is not None:
@@ -294,23 +386,13 @@ def run_constant_stimuli(
         attempt_counts[trial_index] = attempt_index
         trace_attempt = None
         if trace_recorder is not None:
-            from .trace_store import AttemptDefinition
-
-            attempt_key = f"{trial_index}:{attempt_index}"
-            trace_attempt = trace_recorder.start_attempt(
-                attempt_key,
-                AttemptDefinition(
-                    session_id=session_id,
-                    trial_index=trial_index,
-                    attempt_index=attempt_index,
-                    started_us=trace_recorder.elapsed_us(),
-                    level_pct=spec.level_pct,
-                    comparison_height_mm=spec.comparison_height_mm,
-                    reference_height_mm=spec.reference_height_mm,
-                    bar_width_mm=cfg.bar_width_mm,
-                    reference_side=spec.reference_side,
-                    is_catch=spec.is_catch,
-                ),
+            trace_attempt = _start_trace_attempt(
+                trace_recorder,
+                session_id,
+                cfg,
+                spec,
+                trial_index=trial_index,
+                attempt_index=attempt_index,
             )
         result = trial_module.run_trial(
             screen,
@@ -384,13 +466,18 @@ def run() -> int:
 
     import pygame
 
-    from . import audio_cues, display, stimulus
+    from . import audio_cues, display, masking_noise, stimulus
 
     pygame.init()
     # Synthesize the response/timeout cues now: building one costs tens of
     # thousands of Python-level sine evaluations, which would drop frames if
     # it happened lazily inside the first trial.
     audio_cues.preload()
+    # Brown masking noise runs from here until the session ends, so the
+    # participant never hears the rig (relay clicks, fans, the operator's
+    # keyboard). Cues and speech play over it on other mixer channels.
+    if cfg.masking_noise:
+        masking_noise.start(cfg.masking_noise_volume)
     clock = pygame.time.Clock()
     session_id, trial_path, summary_path, config_snapshot_path = _session_paths(cfg, participant)
 
@@ -456,6 +543,7 @@ def run() -> int:
         return 0
     finally:
         stimulus.close_hardware(instrument)
+        masking_noise.stop()
         pygame.quit()
         if trace_recorder is not None:
             trace_error = trace_recorder.close()

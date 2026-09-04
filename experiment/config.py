@@ -78,9 +78,15 @@ class ExperimentConfig:
     response_timeout_s: float = 30.0
     max_trial_attempts: int = 3
     practice_voice_feedback: bool = True
+    practice_spoken_feedback: bool = True
+    practice_pass_fraction: float = 0.75
     ideal_finger_speed_mm_s: float = 100.0
     ideal_speed_tolerance_pct: float = 0.30
     record_main_trace: bool = True
+
+    # Audio environment
+    masking_noise: bool = True
+    masking_noise_volume: float = 0.30
 
     # Display
     blind_test_mode: bool = False  # hide the bars/columns entirely; find them by touch only
@@ -100,6 +106,7 @@ class ExperimentConfig:
     # Bookkeeping
     rng_seed: int | None = None
     participant_id: str = ""
+    dominant_hand: str = ""  # "left" | "right" | "" (not recorded)
     mode: str = "constant_stimuli"  # or "staircase_pilot"
 
     def __post_init__(self) -> None:
@@ -128,6 +135,12 @@ class ExperimentConfig:
             raise ValueError("ideal_finger_speed_mm_s must be > 0")
         if not 0 <= self.ideal_speed_tolerance_pct < 1:
             raise ValueError("ideal_speed_tolerance_pct must be >= 0 and < 1")
+        if not 0 <= self.practice_pass_fraction <= 1:
+            raise ValueError("practice_pass_fraction must be between 0 and 1")
+        if not 0 <= self.masking_noise_volume <= 1:
+            raise ValueError("masking_noise_volume must be between 0 and 1")
+        if self.dominant_hand not in ("", "left", "right"):
+            raise ValueError("dominant_hand must be 'left', 'right', or empty")
         if self.mode not in ("constant_stimuli", "staircase_pilot"):
             raise ValueError(f"unknown mode: {self.mode!r}")
 

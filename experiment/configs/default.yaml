@@ -8,7 +8,7 @@ bar_width_mm: 10.0
 inter_bar_gap_mm: 40.0
 
 delta_max_pct: 0.30
-n_levels: 6
+n_levels: 7                      # odd -> the 0% midpoint is dropped: +-10/20/30%, six real levels
 include_zero_level: false
 trials_per_level: 10
 sweeps_per_block: 1              # levels per block = n_levels * this; 1 -> blocks of 6
@@ -16,14 +16,19 @@ catch_trial_pct: 0.10
 
 feedback: false
 n_practice_trials: 16
-practice_easiest_levels: 2       # practice uses the 2 largest |level| magnitudes, both signs
-break_every_n_trials: 30
+practice_easiest_levels: 2       # practice uses the 2 largest |level| magnitudes, both signs: +-20% and +-30%
+break_every_n_trials: 0          # 0 = the main block runs without break screens
 response_timeout_s: 30.0         # response time limit, practice trials included
 max_trial_attempts: 3            # incl. the first showing; caps the timeout-retry loop
 practice_voice_feedback: true
+practice_spoken_feedback: true   # spoken Correct/Incorrect in practice (participant is blindfolded)
+practice_pass_fraction: 0.75     # 16 trials -> at least 12 correct, otherwise practice repeats
 ideal_finger_speed_mm_s: 100.0  # 10 cm/s
 ideal_speed_tolerance_pct: 0.30 # accepted band: 70-130 mm/s
-record_main_trace: true
+record_main_trace: true          # records practice attempts too (tagged is_practice)
+
+masking_noise: true              # continuous brown noise in the headphones for the whole session
+masking_noise_volume: 0.30
 
 carrier_freq_hz: 125.0
 voltage_peak: 4.0
@@ -31,4 +36,5 @@ ir_sample_hz_nominal: 100.0
 
 rng_seed: null
 participant_id: ""
+dominant_hand: ""               # "left" | "right": the exploring hand; arrow keys go under the other one
 mode: constant_stimuli

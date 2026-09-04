@@ -63,6 +63,15 @@ class ReplayAttempt:
     samples: tuple[ReplaySample, ...]
     sample_times_us: tuple[int, ...]
     events: tuple[ReplayEvent, ...]
+    is_practice: bool = False
+    practice_round: int = 0
+
+    @property
+    def label(self) -> str:
+        """Short human label: 'Practice 1 · Trial 3' or 'Trial 12'."""
+        if self.is_practice:
+            return f"Practice {self.practice_round} · Trial {self.trial_index}"
+        return f"Trial {self.trial_index}"
 
     @property
     def duration_us(self) -> int:
@@ -148,14 +157,26 @@ def load_trace(path: str | Path) -> ReplaySession:
         if session_row is None:
             raise ValueError(f"trace has no session row: {trace_path}")
 
+        # Schema v1 traces (recorded before practice was traced) lack the
+        # practice columns; read them as main-block attempts.
+        columns = {row["name"] for row in connection.execute("PRAGMA table_info(attempts)")}
+        practice_select = (
+            "is_practice, practice_round"
+            if "is_practice" in columns
+            else "0 AS is_practice, 0 AS practice_round"
+        )
+        # started_us is session-elapsed time, so this is true chronological
+        # order: practice rounds first, then the main block, retries where
+        # they were actually shown.
         attempt_rows = connection.execute(
-            """
+            f"""
             SELECT attempt_id, trial_index, attempt_index, started_us, ended_us,
                    level_pct, comparison_height_mm, reference_height_mm,
                    bar_width_mm, reference_side, is_catch,
-                   outcome, response, response_time_us
+                   outcome, response, response_time_us,
+                   {practice_select}
             FROM attempts
-            ORDER BY trial_index, attempt_index
+            ORDER BY started_us, attempt_id
             """
         ).fetchall()
 
@@ -212,6 +233,8 @@ def load_trace(path: str | Path) -> ReplaySession:
                     outcome=row["outcome"],
                     response=row["response"],
                     response_time_us=row["response_time_us"],
+                    is_practice=bool(row["is_practice"]),
+                    practice_round=int(row["practice_round"]),
                     samples=samples,
                     sample_times_us=tuple(sample.t_us for sample in samples),
                     events=tuple(

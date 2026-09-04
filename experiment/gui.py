@@ -33,10 +33,11 @@ DEFAULT_CONFIG_PATH = CONFIGS_DIR / "default.yaml"
 LAST_USED_PATH = CONFIGS_DIR / ".last_used.yaml"
 
 # (attribute, Turkish label, kind)
-# kind in {"float", "int", "optional_int", "bool", "mode", "seconds", "str"}
+# kind in {"float", "int", "optional_int", "bool", "mode", "hand", "seconds", "str"}
 FIELD_GROUPS: list[tuple[str, list[tuple[str, str, str]]]] = [
     ("Katılımcı", [
         ("participant_id", "Katılımcı ID", "str"),
+        ("dominant_hand", "Dominant el (keşif eli)", "hand"),
         # Gerçek deney için kapatıldı: oturum her zaman constant_stimuli olarak
         # çalışır (config.py'deki varsayılan), bu yüzden panelde mod seçimi
         # gösterilmiyor. Geri açmak için: aşağıdaki satırın yorumunu kaldırın ve
@@ -63,8 +64,12 @@ FIELD_GROUPS: list[tuple[str, list[tuple[str, str, str]]]] = [
         ("feedback", "Geri bildirim ver", "bool"),
         ("n_practice_trials", "Alıştırma deneme sayısı", "int"),
         ("practice_easiest_levels", "Alıştırmada kullanılacak kolay seviye sayısı", "int"),
-        ("break_every_n_trials", "Kaç denemede bir mola", "int"),
+        ("practice_pass_fraction", "Alıştırma geçme oranı", "float"),
+        ("break_every_n_trials", "Kaç denemede bir mola (0 = mola yok)", "int"),
         ("practice_voice_feedback", "Alıştırmada sesli hız yönlendirmesi", "bool"),
+        ("practice_spoken_feedback", "Alıştırmada sesli doğru/yanlış bildirimi", "bool"),
+        ("masking_noise", "Kulaklıkta brown noise çal", "bool"),
+        ("masking_noise_volume", "Brown noise ses seviyesi (0-1)", "float"),
         ("ideal_finger_speed_mm_s", "İdeal parmak hızı (mm/s)", "float"),
         ("ideal_speed_tolerance_pct", "İdeal hız toleransı (oran)", "float"),
         ("record_main_trace", "Ana deney hareket kaydı", "bool"),
@@ -91,6 +96,7 @@ FIELD_GROUPS: list[tuple[str, list[tuple[str, str, str]]]] = [
 
 # Yalnızca "mode" alanı geri açılırsa kullanılır (bkz. FIELD_GROUPS).
 MODE_CHOICES = ["constant_stimuli", "staircase_pilot"]
+HAND_CHOICES = ["", "left", "right"]
 
 # "seconds" alanlarının spinbox sınırları. Panel sınırları; gerçek doğrulama
 # config.py'de (response_timeout_s > 0). Üst sınır, yanlışlıkla girilen bir
@@ -107,6 +113,9 @@ SECONDS_STEP = 5.0
 # engineering judgment calls the supervisor is expected to tune per session.
 FIELD_HELP: dict[str, str] = {
     "participant_id": "Oturumun katılımcı kodu (ör. P01). Kaydedilen dosya adlarında ve CSV'lerde kullanılır.",
+    "dominant_hand": "Katılımcının keşif için kullandığı el (işaret parmağı). Ok tuşları DİĞER elin "
+    "altına konur: sağ elini kullanan sola, sol elini kullanan sağa. Kodu etkilemez; config snapshot'ına "
+    "ve her CSV satırına yazılır ki analizde el/strateji ayrımı yapılabilsin.",
     "mode": "constant_stimuli: ana sabit-uyaranlar bloğu. staircase_pilot: delta_max_pct aralığını "
     "belirlemeden önce yaklaşık JND'yi bulmak için hızlı 1-yukarı/2-aşağı adaptif staircase.",
     "base_height_mm": "Referans çubuğun yüksekliği. Karşılaştırma yükseklikleri bunun etrafında "
@@ -122,9 +131,9 @@ FIELD_HELP: dict[str, str] = {
     "değerin negatifinden pozitifine eşit aralıklarla üretilir. Belirli bir makaleye dayanmıyor -- "
     "staircase_pilot modunda bulunan yaklaşık JND'nin ~1.5 katı civarı önerilir (pilot_range_check "
     "uyarısına bakın); supervisor her oturumda ayarlar.",
-    "n_levels": "delta_max_pct aralığında kaç eşit aralıklı seviye kullanılacağı. Varsayılan 6, "
-    "klasik sabit-uyaranlar yönteminde tipik olan 5-9 seviye aralığında pratik bir seçim -- bu "
-    "depoda spesifik bir referansa bağlı değil.",
+    "n_levels": "delta_max_pct aralığındaki linspace nokta sayısı. TEK sayı verilirse ortadaki 0% "
+    "noktası düşer (include_zero_level kapalıyken): 7 ve ±30% → ±10/±20/±30, yani 6 gerçek seviye. "
+    "Varsayılan 7 bu yüzden; 6 verilirse seviyeler ±6/±18/±30 olur ve alıştırma ±18'de koşar.",
     "include_zero_level": "0% (referansla birebir aynı) seviyeyi de dahil et. Varsayılan kapalı: "
     "0 farkta 'doğru' cevap tanımsız (şans düzeyinde) olduğundan genelde dışarıda bırakılır.",
     "trials_per_level": "Her seviyede yapılacak deneme sayısı. Varsayılan 10 -- eğri fit'i "
@@ -151,8 +160,19 @@ FIELD_HELP: dict[str, str] = {
     "seviyeleri kullanır -- eskiden yalnızca en uç seviye kullanılıyordu, katılımcı bir alt seviyeyi "
     "ilk kez test koşullarında görüyordu. Tasarımda olandan fazlası istenirse hepsi kullanılır. "
     "%0 seviyesi asla dahil edilmez: alıştırmada geri bildirim açık ve orada 'doğru' cevap tanımsız.",
-    "break_every_n_trials": "Kaç denemede bir zorunlu mola verileceği; yorgunluk ve dikkat kaybını "
-    "azaltmak içindir. Belirli bir referansa bağlı değil.",
+    "break_every_n_trials": "Kaç denemede bir mola ekranı gösterileceği. 0 = ana blok kesintisiz "
+    "koşar (katılımcı brifingi 'planlı mola yok, konuşma yok' diyor; varsayılan bu yüzden 0).",
+    "practice_pass_fraction": "Alıştırma bloğunun geçilmesi için gereken doğru oranı. 0.75 ve 16 "
+    "deneme → en az 12 doğru (ceil). Altında kalırsa blok yeniden karılıp baştan koşar; tur sayısı "
+    "sınırsız, supervisor ESC ile bitirebilir. Süresi dolan denemeler yanlış sayılır.",
+    "practice_spoken_feedback": "Alıştırmada her yanıttan sonra 'Correct' / 'Incorrect' sesli "
+    "söylenir. Katılımcı gözü bağlı olduğu için ekrandaki yazı yalnızca operatöre görünür; "
+    "sesli bildirim olmadan alıştırmada geri bildirim yok demektir.",
+    "masking_noise": "Oturum boyunca kulaklıkta sürekli brown noise çalar (program başlar başlamaz "
+    "başlar, çıkışta durur). Cihaz ve klavye seslerini maskeler. Cevap/timeout sesleri ve TTS "
+    "bunun üstünden çalar; seviyeyi kulaklıkla test edin.",
+    "masking_noise_volume": "Brown noise kanal seviyesi, 0-1 arası. 0.30 ile başlayın; cevap sesi ve "
+    "konuşma hâlâ rahat duyulmalı, cihazın tıkırtısı duyulmamalı.",
     "response_timeout_s": "Deneme başına tanınan yanıt süresi; varsayılan 30 saniye. Alıştırma "
     "denemeleri dahil her denemede geçerlidir (katılımcı saati ilk kez ana blokta görmesin diye) "
     "ve ekranda geri sayım olarak gösterilir, son 5 saniyede kırmızıya döner. Süre dolunca yumuşak "
@@ -168,8 +188,10 @@ FIELD_HELP: dict[str, str] = {
     "100 mm/s, yani 10 cm/s'dir.",
     "ideal_speed_tolerance_pct": "Hızın doğru sayılacağı hedef çevresindeki tolerans oranı. "
     "0.30 değeri, 100 mm/s hedef için 70-130 mm/s aralığı üretir.",
-    "record_main_trace": "Ana deneyde cursor hareketlerini ayrı bir SQLite trace dosyasına kaydeder. "
-    "Practice ve staircase kayıt edilmez; veritabanı yazımı ayrı worker thread'de yapılır.",
+    "record_main_trace": "Alıştırma ve ana deneydeki parmak hareketlerini ayrı bir SQLite trace "
+    "dosyasına kaydeder (alıştırma denemeleri is_practice/practice_round ile etiketlenir). Staircase "
+    "kayıt edilmez; veritabanı yazımı ayrı worker thread'de yapılır. Animasyon ve heat map için "
+    "analysis/trace_movement.py bu dosyayı okur.",
     "blind_test_mode": "Dokunulacak iki sütun tam ekran yüksekliğinde beyaz şeritlerle işaretlenir "
     "(konumlarını bulmak kör bir arama olmasın diye), ama şeritlerin içindeki gerçek yükseklik "
     "çubukları hiç çizilmez -- yükseklik test edilen şey olduğu için ekrandan okunamamalı, sadece "
@@ -375,6 +397,11 @@ class LauncherApp:
             ttk.Combobox(parent, textvariable=var, values=MODE_CHOICES, state="readonly", width=22).grid(
                 row=row, column=1, sticky="w", pady=(6, 0)
             )
+        elif kind == "hand":
+            var = tk.StringVar()
+            ttk.Combobox(parent, textvariable=var, values=HAND_CHOICES, state="readonly", width=22).grid(
+                row=row, column=1, sticky="w", pady=(6, 0)
+            )
         elif kind == "seconds":
             var = tk.StringVar()
             # A spinbox so the limit can be nudged without retyping. ttk.Spinbox
@@ -425,7 +452,7 @@ class LauncherApp:
             raw = var.get()
             if kind == "bool":
                 kwargs[attr] = bool(raw)
-            elif kind in ("str", "mode"):
+            elif kind in ("str", "mode", "hand"):
                 kwargs[attr] = str(raw).strip()
             elif kind == "optional_int":
                 text = str(raw).strip()

@@ -57,30 +57,54 @@ A high-resolution timer (`time.perf_counter()`) controls signal delivery indepen
 
 ## Procedure
 
-Each session runs as a single participant-facing fullscreen flow that supports
-both a regular keyboard and a numpad. **Space**, **Enter**, or **Numpad Enter**
-advances the flow; **Escape** or **Numpad 0** safely exits at any point (as does
-closing the window). The task is two-alternative forced choice (2AFC): two bars
-are shown side-by-side and the participant decides which is **taller**.
+Each session runs as a single participant-facing fullscreen flow. The
+participant is blindfolded and wears headphones; the screen is for the
+operator. **Space** or **Enter** (main keyboard) advances the flow and
+**Escape** safely exits at any point (as does closing the window). Both are
+operator keys, deliberately out of reach of the participant's answering hand.
+The task is two-alternative forced choice (2AFC): two bars are rendered
+side-by-side and the participant decides which is **taller**.
+
+The participant explores with the **index finger of the dominant hand** and
+answers with the **other hand** on the arrow keys, which the operator places on
+the side of the non-exploring hand. Record which hand explores in
+`dominant_hand` (`left` / `right`); it is written to every trial row and the
+config snapshot so exploration strategies can be compared by hand.
+
+From the moment the program starts until it exits, **continuous brown noise**
+(`masking_noise`, level `masking_noise_volume`) plays in the headphones from a
+reserved mixer channel, masking the rig; the cues and the practice voice play
+over it (`experiment/masking_noise.py`).
 
 1. **Start screen.** The session opens on a "Ready to begin" prompt showing the
-   mode and the base height/width for this configuration. Press **Space**,
-   **Enter**, or **Numpad Enter** to begin.
-2. **Practice block** (skipped if `n_practice_trials == 0`). A short run of easy
-   trials at the extreme levels (±`delta_max_pct`) with **feedback forced on**,
-   under the same response limit as the main block (unanswered practice trials are
-   re-shown at the end of practice, subject to the same `max_trial_attempts` cap),
-   so the participant learns the response mapping before real data is collected.
-   Optional spoken speed coaching says “Faster,” “Good speed,” or “Slower” after
-   a stable speed reading. This coaching is disabled throughout the main block.
-   Voice output uses native Windows SAPI through PowerShell on Windows, `say` on
-   macOS, and `espeak` or `spd-say` on Linux.
+   mode and the base height/width for this configuration. Press **Space** or
+   **Enter** to begin.
+2. **Practice block** (skipped if `n_practice_trials == 0`). `n_practice_trials`
+   easy trials drawn from the `practice_easiest_levels` largest level magnitudes
+   (with the default design: ±20% and ±30%), **feedback forced on**, under the
+   same response limit as the main block (unanswered practice trials are re-shown
+   at the end of the round, subject to the same `max_trial_attempts` cap).
+   Because the participant is blindfolded, feedback is **spoken**
+   (`practice_spoken_feedback`: “Correct” / “Incorrect”) as well as shown on
+   screen for the operator. Optional spoken speed coaching says “Faster,”
+   “Good speed,” or “Slower” after a stable speed reading; it is disabled
+   throughout the main block. Voice output uses native Windows SAPI through
+   PowerShell on Windows, `say` on macOS, and `espeak` or `spd-say` on Linux.
+
+   **Pass mark.** A round passes when at least
+   `ceil(practice_pass_fraction × n_practice_trials)` trials were answered
+   correctly (default 0.75 × 16 = **12**); timed-out trials count as wrong. Below
+   that, the operator sees the score, the participant hears “The practice block
+   will be repeated,” and a freshly shuffled round runs. There is no cap on rounds
+   (the operator can always end the session with Escape). Every practice row in
+   the CSV and every practice attempt in the trace carries its `practice_round`.
 3. **Main block.** The full shuffled constant-stimuli sequence (levels + catch
    trials, interleaved). **Feedback is off** here unless `feedback: true` is set.
-4. **Breaks.** Every `break_every_n_trials` trials the screen pauses on a break
-   prompt showing progress; the participant resumes with **Space**, **Enter**,
-   or **Numpad Enter**.
-5. **End screen.** A "Session complete" message confirms data was saved.
+   With the default `break_every_n_trials: 0` the block runs **continuously**:
+   no break screens, nothing for the participant to talk about, matching the
+   briefing. Set it to a positive number to pause on a break prompt every that
+   many answered trials (resumed with **Space** / **Enter**).
+4. **End screen.** A "Session complete" message confirms data was saved.
 
 Within a single trial the participant slides a finger across the touch surface to
 explore the two bars. The electroadhesion signal is delivered over the **bar
@@ -88,9 +112,12 @@ interior only** (interior = ON, exterior = OFF), so each bar is felt as a raised
 region whose width is governed by the timing method above. When ready, the
 participant responds with either keyboard layout:
 
-- **Left arrow** or **Numpad 4** — the left bar felt taller.
-- **Right arrow** or **Numpad 6** — the right bar felt taller.
-- **Escape** or **Numpad 0** — safely exit the experiment.
+- **Left arrow** (or **Numpad 4**, which carries the ◀ legend on a numpad) — the
+  left bar felt taller.
+- **Right arrow** (or **Numpad 6**, ▶) — the right bar felt taller.
+- **Escape** (main keyboard, operator only) — safely exit the experiment. Numpad
+  0 and Numpad Enter do nothing, so a stray press by the answering hand cannot
+  end the session or advance a screen.
 
 Every trial, **practice included**, runs under the same response limit
 (`response_timeout_s`, 30 seconds by default), with a visible countdown that turns
@@ -162,26 +189,33 @@ bar_width_mm: 10.0
 inter_bar_gap_mm: 40.0   # >= 3.0 mm (BANA 3.4.3.13; Tang & Beebe 1998)
 
 delta_max_pct: 0.30
-n_levels: 6
+n_levels: 7               # odd -> the 0% midpoint is dropped: ±10/±20/±30, six real levels
 include_zero_level: false
 trials_per_level: 10
 sweeps_per_block: 1       # each block holds this many of every level
 catch_trial_pct: 0.10
 
 feedback: false
-n_practice_trials: 8
-break_every_n_trials: 30
+n_practice_trials: 16
+practice_easiest_levels: 2       # practice draws from the 2 largest magnitudes: ±20%, ±30%
+practice_pass_fraction: 0.75     # 16 trials -> at least 12 correct or the block repeats
+practice_spoken_feedback: true   # spoken Correct/Incorrect (the participant is blindfolded)
+break_every_n_trials: 0          # 0 = no break screens; the main block runs continuously
 response_timeout_s: 30.0  # response time limit, practice trials included
 max_trial_attempts: 3     # first showing + retries; bounds the retry loop
 practice_voice_feedback: true
 ideal_finger_speed_mm_s: 100.0
 ideal_speed_tolerance_pct: 0.30
-record_main_trace: true
+record_main_trace: true   # practice attempts are traced too, tagged is_practice / practice_round
+
+masking_noise: true       # continuous brown noise in the headphones for the whole session
+masking_noise_volume: 0.30
 
 blind_test_mode: false   # true -> hide bars, locate them by touch only (no visual)
 
 rng_seed: null           # null -> random, but the resolved seed is always logged
 participant_id: ""
+dominant_hand: ""        # "left" | "right": the exploring hand; arrow keys go under the other
 mode: constant_stimuli   # or staircase_pilot
 ```
 
@@ -197,6 +231,14 @@ Fit a saved session:
 
 ```
 python -m analysis.fit_psychometric experiment/data/P01_*_trials.csv --out fit.png
+```
+
+Animate the finger path of every main-block trial and build the grid heat map
+from the session's trace (see *Movement trace* below):
+
+```
+python -m analysis.trace_movement animate experiment/data/P01_<ts>_trace.sqlite3 --out out/P01/anim
+python -m analysis.trace_movement heatmap experiment/data/P01_<ts>_trace.sqlite3 --out out/P01/heat
 ```
 
 ### Trial log (`<session_id>_trials.csv`)
@@ -228,16 +270,41 @@ practice and non-`answered` rows, so the psychometric fit is unaffected by any o
 this. CSVs written before the column existed load as `answered` (they only ever
 contained answered trials).
 
-### Main-trial movement trace
+### Movement trace
 
 With `record_main_trace: true`, each constant-stimuli session also creates
-`experiment/data/<session_id>_trace.sqlite3`. It records every main-block
-attempt, including attempts that end in timeout or abort. Practice trials and
-staircase-pilot sessions are not recorded. Cursor samples are accumulated in
-small in-memory batches and SQLite writes run on a dedicated worker thread, so
-the real-time trial loop never performs disk I/O. The trace is intended for the
-offline replay and video-export tools; those tools do not run during an
-experiment.
+`experiment/data/<session_id>_trace.sqlite3`. It records every attempt of
+every **practice and main-block** trial, including attempts that end in timeout
+or abort; practice attempts are tagged `is_practice = 1` with their
+`practice_round`, main-block attempts have `is_practice = 0`. Staircase-pilot
+sessions are not recorded. Cursor samples (screen px and surface mm, speed,
+side, signal state, ~60 Hz) are accumulated in small in-memory batches and
+SQLite writes run on a dedicated worker thread, so the real-time trial loop
+never performs disk I/O. The trace is intended for the offline replay,
+animation and heat-map tools; none of those run during an experiment.
+
+#### Per-trial animation and grid heat map (`analysis/trace_movement.py`)
+
+```
+python -m analysis.trace_movement animate TRACE [--trial N] [--include-practice] [--speed 2] [--fps 30] [--format gif|mp4] --out DIR
+python -m analysis.trace_movement heatmap TRACE [--cell-mm 2] [--margin-mm 15] [--metric visits|dwell_ms|samples] [--per-attempt] [--include-practice] --out DIR
+```
+
+`animate` writes one GIF (or MP4, if `ffmpeg` is on the PATH) per attempt: the
+two bars to scale in surface millimetres (reference blue, comparison green,
+taller side named in the title), the full path so far in grey, the last second
+in red, and the fingertip as a marker that is green while the electroadhesion
+signal is on. The HUD shows time, speed and the side being touched.
+
+`heatmap` lays a grid of `--cell-mm` cells over the bars plus `--margin-mm`
+around them, anchored on the bars' edges and the baseline so cell borders line
+up with bar borders. Each cell counts **visits** (how many times the finger
+entered the cell), **dwell_ms** (time spent in it) and raw **samples**. By
+default the whole main block is aggregated into one map with the reference
+height drawn solid and the tallest/shortest comparison dashed;
+`--per-attempt` writes one map per attempt with that trial's actual bars. Every
+map is saved as PNG and as a long-format CSV (`ix, iy, x0_mm .. y1_mm, visits,
+dwell_ms, samples`) for re-plotting or cross-participant comparison.
 
 Open the interactive replay browser with:
 

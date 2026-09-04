@@ -12,6 +12,7 @@ DATA_DIR = Path(__file__).resolve().parent / "data"
 TRIAL_FIELDS = [
     "session_id",
     "participant_id",
+    "dominant_hand",
     "timestamp",
     "trial_index",
     "mode",
@@ -25,6 +26,7 @@ TRIAL_FIELDS = [
     "correct",
     "is_catch",
     "is_practice",
+    "practice_round",
     "response_time_s",
     "passes_json",
 ]
@@ -96,6 +98,10 @@ def load_trials(path: Path) -> list[dict[str, Any]]:
             row["correct"] = row["correct"] in ("1", "True", "true") if row["correct"] else None
             row["is_catch"] = row["is_catch"] in ("1", "True", "true")
             row["is_practice"] = row["is_practice"] in ("1", "True", "true")
+            # 0 for main-block rows and for CSVs written before practice
+            # could repeat; practice rows carry the round they were shown in.
+            row["practice_round"] = int(raw.get("practice_round") or 0)
+            row["dominant_hand"] = raw.get("dominant_hand") or ""
             row["response_time_s"] = float(row["response_time_s"]) if row["response_time_s"] else None
             row["passes"] = json.loads(row["passes_json"]) if row.get("passes_json") else []
             rows.append(row)

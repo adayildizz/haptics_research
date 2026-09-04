@@ -104,3 +104,16 @@ def test_curve_fit_ignores_practice_and_unanswered_rows(tmp_path):
     assert levels == [0.30]
     assert n_trials == [1]  # only the one answered main-block trial
     assert n_taller == [1]
+
+
+def test_practice_round_and_dominant_hand_round_trip(tmp_path):
+    path = tmp_path / "trials.csv"
+    append_trial(_row(is_practice=1, practice_round=2, dominant_hand="right"), path)
+    append_trial(_row(trial_index=2), path)
+
+    rows = load_trials(path)
+
+    assert rows[0]["practice_round"] == 2
+    assert rows[0]["dominant_hand"] == "right"
+    # Main-block rows and rows written without the column read as round 0.
+    assert rows[1]["practice_round"] == 0

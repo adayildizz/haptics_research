@@ -16,6 +16,23 @@ def test_load_default_yaml_config():
     assert cfg.ideal_speed_tolerance_pct == 0.30
     assert cfg.record_main_trace is True
     assert cfg.mode == "constant_stimuli"
+    # The briefing: six real levels at +-10/20/30 (odd n drops 0%), no break
+    # screens, 16 practice trials passed at 12, spoken feedback, brown noise.
+    assert cfg.n_levels == 7
+    assert cfg.break_every_n_trials == 0
+    assert cfg.n_practice_trials == 16
+    assert cfg.practice_pass_fraction == 0.75
+    assert cfg.practice_spoken_feedback is True
+    assert cfg.masking_noise is True
+    assert cfg.dominant_hand == ""
+
+
+def test_dominant_hand_is_validated():
+    ExperimentConfig(base_height_mm=10.0, bar_width_mm=10.0, dominant_hand="left")
+    with pytest.raises(ValueError):
+        ExperimentConfig(base_height_mm=10.0, bar_width_mm=10.0, dominant_hand="both")
+    with pytest.raises(ValueError):
+        ExperimentConfig(base_height_mm=10.0, bar_width_mm=10.0, masking_noise_volume=1.5)
 
 
 def test_non_positive_response_timeout_rejected():

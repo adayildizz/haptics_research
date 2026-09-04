@@ -327,7 +327,8 @@ class ReplayTab(ttk.Frame):
                 "end",
                 iid=str(index),
                 values=(
-                    f"{attempt.trial_index} / {attempt.attempt_index}",
+                    (f"P{attempt.practice_round}-" if attempt.is_practice else "")
+                    + f"{attempt.trial_index} / {attempt.attempt_index}",
                     attempt.outcome or "open",
                     result_text,
                     f"{attempt.duration_us / 1_000_000:.1f}s",
@@ -363,7 +364,7 @@ class ReplayTab(ttk.Frame):
         self.play_button.state(["!disabled"])
         self.restart_button.state(["!disabled"])
         self.session_info_var.set(
-            f"{self._session.participant_id} • Trial {attempt.trial_index} • "
+            f"{self._session.participant_id} • {attempt.label} • "
             f"Attempt {attempt.attempt_index} • {attempt.outcome or 'open'}"
         )
         self._set_timeline(0.0)

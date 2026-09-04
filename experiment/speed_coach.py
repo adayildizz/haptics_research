@@ -142,6 +142,27 @@ class SystemVoice:
             self._disable(str(exc))
             return False
 
+    def interrupt(self) -> None:
+        """Stop whatever is being spoken right now, if anything."""
+        if self._process is not None and self._process.poll() is None:
+            self._process.terminate()
+            try:
+                self._process.wait(timeout=0.5)
+            except subprocess.TimeoutExpired:
+                pass
+        self._process = None
+
+    def speak_now(self, message: str) -> bool:
+        """Interrupt any running utterance and speak ``message`` to completion.
+
+        Used for the practice correct/incorrect feedback: the participant is
+        blindfolded, so the spoken word *is* the feedback, and it must not be
+        dropped just because a "Good speed" prompt happened to still be
+        playing when the answer key was pressed.
+        """
+        self.interrupt()
+        return self.speak(message, wait=True)
+
     def _disable(self, reason: str) -> None:
         self._command = None
         self._backend = None
@@ -150,13 +171,7 @@ class SystemVoice:
             self._failure_reported = True
 
     def close(self) -> None:
-        if self._process is not None and self._process.poll() is None:
-            self._process.terminate()
-            try:
-                self._process.wait(timeout=0.5)
-            except subprocess.TimeoutExpired:
-                pass
-        self._process = None
+        self.interrupt()
 
 
 class PracticeSpeedCoach:

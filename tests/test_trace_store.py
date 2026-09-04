@@ -105,3 +105,66 @@ def test_same_trial_can_store_multiple_attempts(tmp_path):
     ).fetchall()
     assert attempts == [(12, 1, "timeout"), (12, 2, "answered")]
     connection.close()
+
+
+def test_practice_attempts_are_tagged_and_do_not_collide_with_main(tmp_path):
+    """Practice trial 1 (round 1 and round 2) and main trial 1 coexist."""
+    from dataclasses import replace
+
+    path = tmp_path / "session_trace.sqlite3"
+    with TraceStore(path) as store:
+        store.create_session(
+            session_id="P01_session", participant_id="P01",
+            started_at="2026-08-14T12:00:00+03:00", config={}, calibration={}, app_version="t",
+        )
+        base = replace(_attempt(), trial_index=1)
+        store.start_attempt(replace(base, is_practice=True, practice_round=1, started_us=0))
+        store.start_attempt(replace(base, is_practice=True, practice_round=2, started_us=10))
+        store.start_attempt(replace(base, started_us=20))
+
+    connection = sqlite3.connect(path)
+    rows = connection.execute(
+        "SELECT is_practice, practice_round, trial_index FROM attempts ORDER BY started_us"
+    ).fetchall()
+    assert rows == [(1, 1, 1), (1, 2, 1), (0, 0, 1)]
+    connection.close()
+
+    from experiment.replay_data import load_trace
+
+    session = load_trace(path)
+    assert [(a.is_practice, a.practice_round) for a in session.attempts] == [(True, 1), (True, 2), (False, 0)]
+    assert session.attempts[0].label == "Practice 1 \u00b7 Trial 1"
+    assert session.attempts[2].label == "Trial 1"
+
+
+def test_schema_v1_traces_load_as_main_block(tmp_path):
+    """Traces recorded before practice was traced have no practice columns."""
+    path = tmp_path / "old_trace.sqlite3"
+    connection = sqlite3.connect(path)
+    connection.executescript(
+        """
+        CREATE TABLE sessions (session_id TEXT PRIMARY KEY, participant_id TEXT, started_at TEXT,
+            config_json TEXT, calibration_json TEXT, app_version TEXT);
+        CREATE TABLE attempts (attempt_id INTEGER PRIMARY KEY, session_id TEXT, trial_index INTEGER,
+            attempt_index INTEGER, started_us INTEGER, ended_us INTEGER, level_pct REAL,
+            comparison_height_mm REAL, reference_height_mm REAL, bar_width_mm REAL,
+            reference_side TEXT, is_catch INTEGER, outcome TEXT, response TEXT, response_time_us INTEGER);
+        CREATE TABLE cursor_samples (attempt_id INTEGER, sequence INTEGER, t_us INTEGER, frame_dt_us INTEGER,
+            x_px INTEGER, y_px INTEGER, x_mm REAL, y_mm REAL, speed_mm_s REAL, in_active_area INTEGER,
+            active_side TEXT, signal_on INTEGER);
+        CREATE TABLE trace_events (event_id INTEGER PRIMARY KEY, attempt_id INTEGER, t_us INTEGER,
+            event_type TEXT, payload_json TEXT);
+        INSERT INTO sessions VALUES ('S', 'P', 't', '{}', '{}', 'v1');
+        INSERT INTO attempts VALUES (1, 'S', 3, 1, 0, 5000000, 0.3, 13.0, 10.0, 10.0, 'left', 0,
+            'answered', 'right', 5000000);
+        """
+    )
+    connection.commit()
+    connection.close()
+
+    from experiment.replay_data import load_trace
+
+    session = load_trace(path)
+    assert len(session.attempts) == 1
+    assert session.attempts[0].is_practice is False
+    assert session.attempts[0].practice_round == 0
